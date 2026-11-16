@@ -53,7 +53,7 @@
     "path": "./assets/run.mp4",
     "probed": { "width": 1080, "height": 1920, "sar": "1:1", "dar": "9:16", "rotation": 0, "durationSec": 80 }
   },
-  "tcx": { "path": "./activity_662602587.tcx", "distanceMeters": 18278, "trackpoints": 4828, "laps": 19 },
+  "tcx": { "path": "../../activity_662602587.tcx", "distanceMeters": 18278, "trackpoints": 4828, "laps": 19 },
   "timezone": "Asia/Shanghai",
   "alignmentOffsetMs": 0,
   "weatherSnapshot": {

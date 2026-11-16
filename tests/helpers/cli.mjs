@@ -25,11 +25,17 @@ export function readValidProject() {
   return JSON.parse(readFileSync(VALID_PROJECT_PATH, 'utf8'));
 }
 
-/** 把配置写到临时目录，返回绝对路径；调用方用后自行删除。 */
-export function writeTempProject(project) {
+/**
+ * 把配置写到临时目录，返回绝对路径；调用方用后自行删除。
+ * `files` 里的额外文件（例如 TCX 数据源）按同样的相对路径写到 project.json 旁边。
+ */
+export function writeTempProject(project, files = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), 'marathon-hud-t2-'));
   const file = path.join(dir, 'project.json');
   writeFileSync(file, JSON.stringify(project, null, 2));
+  for (const [name, content] of Object.entries(files)) {
+    writeFileSync(path.join(dir, name), content);
+  }
   return file;
 }
 
