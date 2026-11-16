@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "targetPresets": ["douyin-portrait", "bilibili-landscape"],
+  "gridVersion": 1,
+  "layout": {
+    "sourcePresetId": "douyin-portrait",
+    "components": [
+      {
+        "id": "progress",
+        "anchor": "top-left",
+        "col": 2,
+        "row": 4,
+        "colSpan": 20,
+        "rowSpan": 2,
+        "zIndex": 2,
+        "visible": true,
+        "subcomponents": { "lapMarkers": false }
+      },
+      {
+        "id": "route",
+        "anchor": "top-left",
+        "col": 2,
+        "row": 7,
+        "colSpan": 6,
+        "rowSpan": 6,
+        "zIndex": 1,
+        "visible": true
+      },
+      {
+        "id": "metrics",
+        "anchor": "bottom-left",
+        "col": 12,
+        "row": 30,
+        "colSpan": 6,
+        "rowSpan": 8,
+        "zIndex": 3,
+        "visible": true,
+        "subcomponents": { "power": false, "elevation": false }
+      },
+      {
+        "id": "weather",
+        "anchor": "bottom-right",
+        "col": 2,
+        "row": 6,
+        "colSpan": 7,
+        "rowSpan": 5,
+        "zIndex": 2,
+        "visible": true
+      }
+    ]
+  },
+  "sourceVideo": {
+    "path": "./assets/run.mp4",
+    "probed": { "width": 1080, "height": 1920, "sar": "1:1", "dar": "9:16", "rotation": 0, "durationSec": 80 }
+  },
+  "tcx": { "path": "../../activity_662602587.tcx", "distanceMeters": 18278, "trackpoints": 4828, "laps": 19 },
+  "timezone": "Asia/Shanghai",
+  "alignmentOffsetMs": 0,
+  "weatherSnapshot": {
+    "source": "open-meteo-historical-archive",
+    "query": { "latitude": 22.99092, "longitude": 115.32902, "timeLocal": "2026-11-15T19:00" },
+    "values": { "temperatureC": 22, "humidityPct": 89, "precipitationMm": 0.1, "weatherCode": 51 }
+  },
+  "output": { "path": "./out/final.mp4", "fps": 30, "codec": "libx264", "pixFmt": "yuv420p" }
+}

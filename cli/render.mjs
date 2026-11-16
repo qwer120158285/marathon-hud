@@ -20,13 +20,15 @@ import {
 } from './data.mjs';
 import { motionAtFrame } from '../data/interpolate.mjs';
 import { resolvePreset } from '../shared/presets.js';
+import { jointValidate } from '../shared/layout.js';
 
 const USAGE = `用法：node cli/render.mjs --project <path/to/project.json> [options]
 
   --project <path>   必填，project.json 路径
   --preset <id>      本次出片预设，必须在 targetPresets 内；存在多个目标预设时必须指定
   --at-frame <n>     打印第 n 帧（0 起）对应的运动时刻与运动指标，用于核对数据源
-  --validate-only    只做预设校验并打印报告（含数据源解析结果），不加载媒体、不启动 FFmpeg
+  --validate-only    只做 Schema 与联合预设校验并打印报告（含数据源解析结果），
+                     不加载媒体、不启动 FFmpeg
   --dry-run          执行到导出前全量校验为止，不启动 FFmpeg（本版本未实现）
   --out <path>       覆盖 output.path（本版本未实现）
   -h, --help         显示本帮助
@@ -122,6 +124,30 @@ function main(argv) {
     return EXIT_CONFIG_ERROR;
   }
 
+  // 导出前校验顺序按 docs/SPEC-v1.md 第 4 节：Schema（已完成）→ 联合校验 → 资源（数据源）。
+  // --at-frame 只查数据源、不产出成片，因此跳过联合校验，也不要求布局可用。
+  let presetSnapshot = [];
+  let joint = { ok: true, errors: [], warnings: [] };
+  if (args.validateOnly) {
+    // 同一版本预设配置：整份报告与联合校验都只用这一次解析出来的快照。
+    presetSnapshot = presetIds.map((id) => resolvePreset(id));
+    joint = jointValidate({
+      layout: project.layout,
+      targetPresets: presetIds,
+      presets: presetSnapshot,
+    });
+
+    if (!joint.ok) {
+      for (const error of joint.errors) {
+        process.stderr.write(`错误：${error.message}\n`);
+      }
+      process.stderr.write(
+        `联合校验失败：${joint.errors.length} 处错误，候选布局未保存\n`,
+      );
+      return EXIT_CONFIG_ERROR;
+    }
+  }
+
   // 数据源：project.json 里的 tcx.path 相对 project.json 所在目录。
   // 缺失 / 不可解析一律退出码 4，并说明是哪个文件、为什么。
   let data;
@@ -148,9 +174,26 @@ function main(argv) {
     return EXIT_SUCCESS;
   }
 
-  const sections = presetIds.map((id) => formatPresetReport(resolvePreset(id)));
-  const dataSection = formatDataSourceReport(data);
-  process.stdout.write(`校验通过：${projectPath}\n\n${sections.join('\n\n')}\n\n${dataSection}\n`);
+  const lines = [
+    `校验通过：${projectPath}`,
+    '',
+    presetSnapshot.map(formatPresetReport).join('\n\n'),
+    '',
+    `联合校验通过：${presetIds.join('、')}（${project.layout.components.length} 个组件）`,
+    '',
+    formatDataSourceReport(data),
+  ];
+
+  // 重叠只提示不阻止：提示与错误分开输出，且不影响退出码。
+  if (joint.warnings.length > 0) {
+    lines.push(
+      '',
+      '提示（仅提示，不阻止保存）：',
+      ...joint.warnings.map((warning) => `  - ${warning.message}`),
+    );
+  }
+
+  process.stdout.write(`${lines.join('\n')}\n`);
   return EXIT_SUCCESS;
 }
 
