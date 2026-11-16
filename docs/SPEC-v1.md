@@ -130,11 +130,12 @@ node cli/render.mjs --project <path/to/project.json> [options]
 | --- | --- |
 | `--project <path>` | 必填，`project.json` 路径 |
 | `--preset <id>` | 本次出片预设，必须在 `targetPresets[]` 内；存在多个目标预设且不指定时报错 |
-| `--validate-only` | 只做联合预设校验并打印报告，不加载媒体、不启动 FFmpeg |
+| `--at-frame <n>` | 打印第 n 帧（0 起）对应的运动时刻与该帧运动指标，用于核对数据源；不需要 `--preset` |
+| `--validate-only` | 只做联合预设校验并打印报告（含数据源解析统计），不加载媒体、不启动 FFmpeg |
 | `--dry-run` | 执行到导出前全量校验为止（含 ffprobe 尺寸比对），不启动 FFmpeg |
 | `--out <path>` | 覆盖 `output.path` |
 
-退出码：`0` 成功；`2` 配置或校验失败；`3` FFmpeg 失败；`4` 数据源缺失。
+退出码：`0` 成功；`2` 配置或校验失败；`3` FFmpeg 失败；`4` 数据源缺失（`tcx.path` 未配置、文件不存在或不可解析）。
 
 导出前校验顺序（ADR 0003 + Q15）：
 

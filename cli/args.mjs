@@ -25,6 +25,7 @@ const VALUE_FLAGS = new Map([
   ['--project', 'project'],
   ['--preset', 'preset'],
   ['--out', 'out'],
+  ['--at-frame', 'atFrame'],
 ]);
 
 const BOOLEAN_FLAGS = new Map([
@@ -37,7 +38,7 @@ const BOOLEAN_FLAGS = new Map([
 /**
  * 解析命令行参数。
  * @param {string[]} argv 不含 node 与脚本路径的参数数组
- * @returns {{ project?: string, preset?: string, out?: string,
+ * @returns {{ project?: string, preset?: string, out?: string, atFrame?: number,
  *             dryRun: boolean, validateOnly: boolean, help: boolean }}
  */
 export function parseArgs(argv) {
@@ -58,7 +59,15 @@ export function parseArgs(argv) {
       if (value === undefined || value.startsWith('--')) {
         throw new UsageError(`${token} 需要一个取值，例如 ${token} <path>`);
       }
-      args[valueKey] = value;
+      if (valueKey === 'atFrame') {
+        const frame = Number(value);
+        if (!Number.isInteger(frame) || frame < 0) {
+          throw new UsageError(`--at-frame 需要非负整数，实际为 "${value}"（第 n 帧，从 0 开始）`);
+        }
+        args.atFrame = frame;
+      } else {
+        args[valueKey] = value;
+      }
       i += 1;
       continue;
     }
