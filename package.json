@@ -1,0 +1,14 @@
+{
+  "name": "marathon-hud",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "把运动记录渲染成带透明通道的 HUD 帧、再与源视频合成成片的离线工具链",
+  "scripts": {
+    "test": "node --test",
+    "cli": "node cli/render.mjs"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.100"
+  }
+}
