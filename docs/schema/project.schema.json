@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://marathon-hud.invalid/schema/project-v1.json",
+  "title": "Marathon HUD project.json (v1)",
+  "description": "单一项目配置入口。字段职责见 docs/adr/0005-project-config-model.md；字段值为拟定实现规格，决策边界以 ADR 为准。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "targetPresets", "gridVersion", "layout"],
+  "properties": {
+    "version": {
+      "const": 1,
+      "description": "项目配置结构版本，用于 JSON 迁移；与 gridVersion 相互独立"
+    },
+    "targetPresets": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/presetId" },
+      "description": "布局必须通过联合校验的全部目标预设"
+    },
+    "gridVersion": {
+      "const": 1,
+      "description": "格位计算规则版本，用于格位规则迁移"
+    },
+    "layout": { "$ref": "#/$defs/layout" },
+    "sourceVideo": { "$ref": "#/$defs/sourceVideo" },
+    "tcx": { "$ref": "#/$defs/tcx" },
+    "timezone": {
+      "type": "string",
+      "minLength": 1,
+      "default": "Asia/Shanghai",
+      "description": "活动时间解释所用时区；采样点内部用 UTC 相对时间插值"
+    },
+    "alignmentOffsetMs": {
+      "type": "integer",
+      "default": 0,
+      "description": "视频 0 秒对应的运动时刻偏移，与时区是两个概念"
+    },
+    "weatherSnapshot": { "$ref": "#/$defs/weatherSnapshot" },
+    "fonts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/font" }
+    },
+    "output": { "$ref": "#/$defs/output" }
+  },
+  "$defs": {
+    "presetId": {
+      "type": "string",
+      "minLength": 1,
+      "examples": ["douyin-portrait", "bilibili-landscape"],
+      "description": "画布预设标识；内置两个保留值，自定义预设由实现扩展"
+    },
+    "componentId": {
+      "type": "string",
+      "enum": ["route", "progress", "metrics", "weather"],
+      "description": "四类产品分类；可选子组件不在此枚举中"
+    },
+    "anchor": {
+      "type": "string",
+      "enum": ["top-left", "top-right", "bottom-left", "bottom-right"]
+    },
+    "layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourcePresetId", "components"],
+      "properties": {
+        "sourcePresetId": {
+          "$ref": "#/$defs/presetId",
+          "description": "编辑上下文，只是产生布局时所用的预设，不是布局归属"
+        },
+        "components": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/componentLayout" },
+          "description": "组件位置、尺寸、锚点、层级与可见性；同一 id 只能出现一次"
+        }
+      }
+    },
+    "componentLayout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "anchor", "col", "row", "colSpan", "rowSpan", "zIndex", "visible"],
+      "properties": {
+        "id": { "$ref": "#/$defs/componentId" },
+        "anchor": { "$ref": "#/$defs/anchor" },
+        "col": { "type": "integer", "minimum": 0 },
+        "row": { "type": "integer", "minimum": 0 },
+        "colSpan": { "type": "integer", "minimum": 1 },
+        "rowSpan": { "type": "integer", "minimum": 1 },
+        "zIndex": { "type": "integer" },
+        "visible": {
+          "type": "boolean",
+          "description": "即 configEnabled；是否绘制还需运行时满足 dataAvailable"
+        },
+        "subcomponents": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "可选子组件；power/elevation 属 metrics，lapMarkers 属 progress",
+          "properties": {
+            "power": { "type": "boolean", "default": false },
+            "elevation": { "type": "boolean", "default": false },
+            "lapMarkers": { "type": "boolean", "default": false }
+          }
+        }
+      }
+    },
+    "sourceVideo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "description": "相对 project.json 所在目录" },
+        "probed": {
+          "type": "object",
+          "description": "ffprobe 自动探测值，与使用者配置分开",
+          "properties": {
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 },
+            "sar": { "type": "string" },
+            "dar": { "type": "string" },
+            "rotation": { "type": "number" },
+            "durationSec": { "type": "number", "minimum": 0 }
+          }
+        },
+        "overrides": {
+          "type": "object",
+          "description": "使用者手工修改值，优先于 probed"
+        }
+      }
+    },
+    "tcx": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "description": "相对 project.json 所在目录" },
+        "distanceMeters": { "type": "number", "minimum": 0 },
+        "trackpoints": { "type": "integer", "minimum": 0 },
+        "laps": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "weatherSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "编辑期一次性取得并冻结的天气记录；渲染期零网络请求",
+      "required": ["source", "query", "values"],
+      "properties": {
+        "source": { "type": "string" },
+        "requestUrl": { "type": "string" },
+        "query": {
+          "type": "object",
+          "properties": {
+            "latitude": { "type": "number" },
+            "longitude": { "type": "number" },
+            "timeLocal": { "type": "string" }
+          }
+        },
+        "grid": {
+          "type": "object",
+          "description": "ERA5 再分析网格坐标，用于溯源",
+          "properties": {
+            "latitude": { "type": "number" },
+            "longitude": { "type": "number" }
+          }
+        },
+        "fetchedAt": { "type": "string" },
+        "values": {
+          "type": "object",
+          "properties": {
+            "temperatureC": { "type": "number" },
+            "humidityPct": { "type": "number" },
+            "precipitationMm": { "type": "number" },
+            "weatherCode": { "type": "integer" }
+          }
+        },
+        "manualOverride": {
+          "type": "object",
+          "description": "使用者手工覆盖值优先于 values"
+        }
+      }
+    },
+    "font": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "path"],
+      "properties": {
+        "name": { "type": "string" },
+        "path": { "type": "string", "description": "相对 project.json 所在目录" },
+        "version": { "type": "string" },
+        "sha256": { "type": "string" },
+        "weight": { "type": "string" }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string" },
+        "fps": { "type": "number", "exclusiveMinimum": 0 },
+        "codec": { "type": "string" },
+        "pixFmt": { "type": "string" }
+      }
+    }
+  }
+}

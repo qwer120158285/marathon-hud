@@ -1,0 +1,13 @@
+{
+  "name": "marathon-hud-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Offline running-video HUD renderer using Canvas 2D and FFmpeg",
+  "type": "module",
+  "scripts": {
+    "render": "node src/render.js"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.80"
+  }
+}
