@@ -65,7 +65,7 @@ test('竖屏通过、横屏越界的布局被拒绝，并报出预设、组件�
   assert.deepEqual(error.overflow, [{ edge: 'top', px: 520, cells: 13 }]);
   assert.match(
     error.message,
-    /画布预设 bilibili-landscape：组件 metrics 超出安全区——上边越界 520 px（13 格）；组件矩形 x 80–320、y -440–-120，安全区 x 64–1856、y 80–960/,
+    /画布预设 bilibili-landscape：组件 metrics 超出安全区——上边越界 520 px（13 格）；组件矩形 x 80…320、y -440…-120，安全区 x 64…1856、y 80…960/,
   );
   assert.doesNotMatch(error.message, /douyin-portrait/);
 });

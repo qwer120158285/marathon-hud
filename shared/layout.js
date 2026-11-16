@@ -139,8 +139,10 @@ export function safeAreaOverflow(component, preset) {
   return overflow;
 }
 
-/** 数字转报告文本：整数不带小数点，小数最多三位。 */
+/** 数字转报告文本：整数不带小数点，小数最多三位；缺失值直接写明。 */
 function formatNumber(value) {
+  if (value === undefined) return '缺失';
+  if (typeof value !== 'number' || !Number.isFinite(value)) return String(value);
   return Number.isInteger(value) ? String(value) : String(Math.round(value * 1000) / 1000);
 }
 
@@ -191,7 +193,7 @@ export function jointValidate({ layout, targetPresets, presets }) {
       errors.push(...placementErrors);
       // 几何不成立（锚点非法、格位非法）的组件不参与重叠计算，避免用无效矩形产生误导提示。
       if (placementErrors.length === 0) {
-        rects.push({ component, index, rect: resolveComponentRect(component, preset) });
+        rects.push({ component, rect: resolveComponentRect(component, preset) });
       }
     });
 
@@ -281,7 +283,8 @@ function describeOverflow(overflow) {
 function describeBounds(component, preset) {
   const rect = resolveComponentRect(component, preset);
   const { x, y, width, height } = preset.safeArea;
-  const range = (start, size) => `${formatNumber(start)}–${formatNumber(start + size)}`;
+  // 用「…」而非破折号分隔上下界，避免负数区间（如 -440–-120）被误读。
+  const range = (start, size) => `${formatNumber(start)}…${formatNumber(start + size)}`;
 
   return `组件矩形 x ${range(rect.x, rect.width)}、y ${range(rect.y, rect.height)}，`
     + `安全区 x ${range(x, width)}、y ${range(y, height)}`;

@@ -12,12 +12,13 @@ import {
 } from './args.mjs';
 import { loadProject, loadSchema, validateProject } from './project.mjs';
 import { resolvePreset } from '../shared/presets.js';
+import { jointValidate } from '../shared/layout.js';
 
 const USAGE = `用法：node cli/render.mjs --project <path/to/project.json> [options]
 
   --project <path>   必填，project.json 路径
   --preset <id>      本次出片预设，必须在 targetPresets 内；存在多个目标预设时必须指定
-  --validate-only    只做预设校验并打印报告，不加载媒体、不启动 FFmpeg
+  --validate-only    只做 Schema 与联合预设校验并打印报告，不加载媒体、不启动 FFmpeg
   --dry-run          执行到导出前全量校验为止，不启动 FFmpeg（本版本未实现）
   --out <path>       覆盖 output.path（本版本未实现）
   -h, --help         显示本帮助
@@ -112,8 +113,40 @@ function main(argv) {
     return EXIT_CONFIG_ERROR;
   }
 
-  const sections = presetIds.map((id) => formatPresetReport(resolvePreset(id)));
-  process.stdout.write(`校验通过：${projectPath}\n\n${sections.join('\n\n')}\n`);
+  // 同一版本预设配置：整份报告与联合校验都只用这一次解析出来的快照。
+  const presetSnapshot = presetIds.map((id) => resolvePreset(id));
+  const joint = jointValidate({
+    layout: project.layout,
+    targetPresets: presetIds,
+    presets: presetSnapshot,
+  });
+
+  if (!joint.ok) {
+    for (const error of joint.errors) {
+      process.stderr.write(`错误：${error.message}\n`);
+    }
+    process.stderr.write(`联合校验失败：${joint.errors.length} 处错误，候选布局未保存\n`);
+    return EXIT_CONFIG_ERROR;
+  }
+
+  const lines = [
+    `校验通过：${projectPath}`,
+    '',
+    presetSnapshot.map(formatPresetReport).join('\n\n'),
+    '',
+    `联合校验通过：${presetIds.join('、')}（${project.layout.components.length} 个组件）`,
+  ];
+
+  // 重叠只提示不阻止：提示与错误分开输出，且不影响退出码。
+  if (joint.warnings.length > 0) {
+    lines.push(
+      '',
+      '提示（仅提示，不阻止保存）：',
+      ...joint.warnings.map((warning) => `  - ${warning.message}`),
+    );
+  }
+
+  process.stdout.write(`${lines.join('\n')}\n`);
   return EXIT_SUCCESS;
 }
 
