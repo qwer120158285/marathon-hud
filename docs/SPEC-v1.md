@@ -171,7 +171,7 @@ node tests/golden-compare.mjs --preset douyin-portrait
 node tests/golden-compare.mjs --preset bilibili-landscape
 ```
 
-固定 `tests/fixtures/sample.json`、同一份布局、同一套字体、DPR = 1、固定 Canvas 尺寸与颜色空间、透明背景；浏览器与 Node 各输出 PNG，与 `tests/golden/<preset>.png` 比较全图与关键区域两个差异比例。阈值与计算口径见 ADR 0001；升级 `@napi-rs/canvas` / Skia / 字体版本后须重审基准图。
+固定 `tests/fixtures/sample.json`、同一份布局、同一套字体、DPR = 1、固定 Canvas 尺寸与颜色空间、透明背景；浏览器与 Node 各输出 PNG，与 `tests/golden/<preset>.png` 比较全图与关键区域两个差异比例。阈值与计算口径见 ADR 0001（含 2026-11-17 的修订 1：非文字区域沿用 8/255 与 ≤1% / ≤0.2%，文字区域改判为几何三项 + 剖面内容 + 墨量带 + 12× 归一化降采样兜底）；升级 `@napi-rs/canvas` / Skia / 字体版本后须重审基准图并重跑标定。
 
 ## 7. 首版验收清单
 
