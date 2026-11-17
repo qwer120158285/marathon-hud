@@ -73,6 +73,8 @@ const state = {
   preset: null,
   /** 固定示例采样（tests/fixtures/sample.json 的 full 样本）。 */
   metrics: null,
+  /** 示意活动的整场数据（轨迹、Lap、总距离），路线与进度组件要用。 */
+  activity: null,
   gridVisible: true,
   selectionId: null,
   /** 拖动 / Resize 的临时状态；提交前不改布局。 */
@@ -112,6 +114,7 @@ async function loadSample() {
   const entry = sample.samples.find((item) => item.id === 'full') ?? sample.samples[0];
   if (entry === undefined) throw new Error('示例采样为空');
   state.metrics = entry.metrics;
+  state.activity = sample.activity ?? null;
 }
 
 async function loadProject(projectPath) {
@@ -212,6 +215,7 @@ function rebuildPreview() {
       preset: state.preset,
       components: components(),
       metrics: state.metrics ?? {},
+      activity: state.activity ?? undefined,
     });
     state.previewError = null;
   } catch (error) {

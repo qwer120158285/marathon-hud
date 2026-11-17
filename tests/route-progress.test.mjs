@@ -8,9 +8,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createCanvas, registerFonts } from '../cli/adapter.mjs';
-import { collectCriticalRegions, drawFrame, prepareStatic, routeProgressAt } from '../shared/hud.js';
+import { collectCriticalRegions, drawFrame, prepareStatic, projectRoute, routeProgressAt } from '../shared/hud.js';
 import { resolveComponentRect } from '../shared/layout.js';
 import { resolvePreset } from '../shared/presets.js';
+import { readTcx } from '../data/tcx.mjs';
 
 await registerFonts();
 
@@ -212,6 +213,42 @@ test('路线组件只画路径：绘制计划里没有底板与文字', () => {
   assert.deepEqual(item.staticTexts, []);
   assert.deepEqual(item.dynamic, []);
 });
+// 验收项 1（真实样本事实）：最前 36 个采样点没有 GPS，路线必须从第 37 个点起笔。
+// 期望值来自 docs/DECISIONS.md 的事实基线，不由实现反推。
+test('真实样本：前 36 点无 GPS，路线从第 37 个采样点起笔，路径段数等于连续 GPS 段数', () => {
+  const activity = readTcx(new URL('../activity_662602587.tcx', import.meta.url));
+  // 事实基线：4828 个 Trackpoint、18 处重复时间戳，规范化后是 4810 个采样点。
+  assert.equal(activity.trackpointCount, 4828);
+  assert.equal(activity.duplicateTimestamps, 18);
+  assert.equal(activity.samples.length, 4810);
+  assert.equal(activity.samples.slice(0, 36).filter((point) => point.lat === null).length, 36);
+  assert.ok(Number.isFinite(activity.samples[36].lat));
+
+  const rect = resolveComponentRect(componentById('route'), PRESET);
+  const route = projectRoute(activity.samples, rect, 18);
+
+  // 独立计数：GPS 有效性从「无」跳到「有」的次数就是连续段数。
+  let runs = 0;
+  let valid = false;
+  for (const point of activity.samples) {
+    const isGps = Number.isFinite(point.lat) && Number.isFinite(point.lon);
+    if (isGps && !valid) runs += 1;
+    valid = isGps;
+  }
+  assert.equal(route.runs.length, runs);
+
+  const points = route.runs.flat();
+  assert.equal(points.length, activity.samples.filter((point) => Number.isFinite(point.lat)).length);
+  const first = route.runs[0][0];
+  assert.ok(first.x > rect.x && first.x < rect.x + rect.width, '起点横向必须落在组件矩形内');
+  assert.ok(first.y > rect.y && first.y < rect.y + rect.height, '起点纵向必须落在组件矩形内');
+  assert.ok(first.x - rect.x > 1 || first.y - rect.y > 1, '起点不能被画到 (0, 0) 一类的画布原点');
+  for (const point of points) {
+    assert.ok(point.x >= rect.x && point.x <= rect.x + rect.width);
+    assert.ok(point.y >= rect.y && point.y <= rect.y + rect.height);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // 进度：已跑距离 / 总距离 + 进度条
 // ---------------------------------------------------------------------------

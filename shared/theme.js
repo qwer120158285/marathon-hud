@@ -60,20 +60,21 @@ export const ROUTE = {
 /** 进度组件在 1080 短边下的样式。 */
 export const PROGRESS_CARD = {
   paddingX: 22,
-  paddingY: 14,
+  paddingY: 12,
   /** 公里刻度相对进度条的上下伸出量。 */
   markerOverhang: 4,
   markerWidth: 2,
   markerColor: 'rgba(255, 255, 255, 0.55)',
+  /** 标签、数值、总量、单位排在同一行，整块高度压进 2 行格位（80 px）。 */
   label: { size: 15, weight: 600, lineHeight: 1.4 },
-  value: { size: 38, weight: 700, lineHeight: 1.15 },
+  value: { size: 34, weight: 700, lineHeight: 1.15 },
   unit: { size: 15, weight: 500 },
-  /** 数值与「/ 总距离」之间的水平间距。 */
-  valueGap: 8,
+  /** 标签与数值、数值与「/ 总距离」之间的水平间距。 */
+  valueGap: 12,
   /** 文字行与进度条之间的留白。 */
-  barGap: 8,
-  barHeight: 10,
-  barRadius: 5,
+  barGap: 6,
+  barHeight: 8,
+  barRadius: 4,
   trackColor: 'rgba(255, 255, 255, 0.18)',
   fillColor: '#FFFFFF',
   ascentRatio: 0.78,

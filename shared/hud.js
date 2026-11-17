@@ -179,10 +179,10 @@ function planMetrics(ctx, { preset, component, metrics }) {
   if (component.visible !== true) return null;
 
   const availability = metrics?.availability ?? {};
-  // 三个条件同时成立才留这一行：配置开启、活动有该指标、预绘时刻确实取得到值。
-  // 最后一条挡住「活动说有功率但此刻没有值」这种数据缺口——宁可整行不画，也不留标签配空数字。
   const rows = METRIC_ROWS.filter((row) => rowEnabled(component, row, availability)
-    && row.format(metrics?.[row.field]) !== null);
+    // 可选行的单位位置依赖数值宽度，参考帧取不到值就不排这一行（不画标签配空数字）。
+    // 基础三行不依赖参考帧的具体取值：帧循环会传入只带 availability 的 metrics。
+    && (row.subcomponent === undefined || row.format(metrics?.[row.field]) !== null));
   // 没有一行可画就不画底板：不留空行、不显示 0、不留一块空卡片。
   if (rows.length === 0) return null;
 
@@ -531,9 +531,9 @@ function planProgress(ctx, { preset, component, metrics, activity }) {
   const theme = resolveTheme(preset);
   const style = theme.progress;
   const rect = resolveComponentRect(component, preset);
-  const labelLine = Math.round(style.label.size * style.label.lineHeight);
   const valueLine = Math.round(style.value.size * style.value.lineHeight);
-  const panelHeight = style.paddingY * 2 + labelLine + valueLine + style.barGap + style.barHeight;
+  // 标签、数值、总量、单位排在同一行（行高按数值字号算），下面接进度条。
+  const panelHeight = style.paddingY * 2 + valueLine + style.barGap + style.barHeight;
 
   if (panelHeight > rect.height) {
     throw new Error(
@@ -550,7 +550,7 @@ function planProgress(ctx, { preset, component, metrics, activity }) {
   };
   const bar = {
     x: panel.x + style.paddingX,
-    y: panel.y + style.paddingY + labelLine + valueLine + style.barGap,
+    y: panel.y + style.paddingY + valueLine + style.barGap,
     width: panel.width - style.paddingX * 2,
     height: style.barHeight,
     radius: style.barRadius,
@@ -565,30 +565,32 @@ function planProgress(ctx, { preset, component, metrics, activity }) {
   const value = formatDistance(distanceM);
   const valueWidth = value === null ? 0 : measureTabularText(ctx, value, valueTabular);
 
-  const labelBaseline = panel.y + style.paddingY + Math.round(style.label.size * style.ascentRatio);
-  const valueBaseline = panel.y + style.paddingY + labelLine + Math.round(style.value.size * style.ascentRatio);
+  const baseline = panel.y + style.paddingY + Math.round(style.value.size * style.ascentRatio);
   const textX = panel.x + style.paddingX;
 
-  const totalText = `/ ${formatDistance(totalDistanceM)}`;
   ctx.font = labelFont;
-  const totalTabular = tabularMetrics(ctx, [':', '.', '/', ' ']);
-  const totalWidth = measureTabularText(ctx, totalText, totalTabular);
+  const labelTabular = tabularMetrics(ctx, [':', '.', '/', ' ']);
+  const labelWidth = measureTabularText(ctx, 'DISTANCE', labelTabular);
+  const valueX = textX + labelWidth + style.valueGap;
+
+  const totalText = `/ ${formatDistance(totalDistanceM)}`;
+  const totalWidth = measureTabularText(ctx, totalText, labelTabular);
 
   const staticTexts = [
-    { text: 'DISTANCE', font: labelFont, color: COLORS.label, x: textX, baseline: labelBaseline },
+    { text: 'DISTANCE', font: labelFont, color: COLORS.label, x: textX, baseline },
     {
       text: totalText,
       font: labelFont,
       color: COLORS.label,
-      x: textX + valueWidth + style.valueGap,
-      baseline: valueBaseline,
+      x: valueX + valueWidth + style.valueGap,
+      baseline,
     },
     {
       text: 'KM',
       font: unitFont,
       color: COLORS.label,
-      x: textX + valueWidth + style.valueGap + totalWidth + theme.unitGap,
-      baseline: valueBaseline,
+      x: valueX + valueWidth + style.valueGap + totalWidth + theme.unitGap,
+      baseline,
     },
   ];
 
@@ -619,8 +621,8 @@ function planProgress(ctx, { preset, component, metrics, activity }) {
         format: formatDistance,
         font: valueFont,
         color: COLORS.value,
-        x: textX,
-        baseline: valueBaseline,
+        x: valueX,
+        baseline,
         value,
         tabular: valueTabular,
       },

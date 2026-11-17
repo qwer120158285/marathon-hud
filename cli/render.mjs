@@ -155,6 +155,8 @@ async function dryRun({ args, loaded }) {
     preset,
     components: project.layout.components,
     metrics: { ...firstFrame.metrics, availability: data.motion.availability },
+    // 整场活动：路线轨迹、总距离与真实 Lap 刻度都从这里取。
+    activity: data.activity,
   });
 
   const sink = createCountingSink();

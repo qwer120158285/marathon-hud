@@ -24,7 +24,7 @@
         "col": 2,
         "row": 5,
         "colSpan": 20,
-        "rowSpan": 3,
+        "rowSpan": 2,
         "zIndex": 2,
         "visible": true,
         "subcomponents": {
