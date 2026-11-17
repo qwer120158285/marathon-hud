@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 /**
- * CLI 入口：加载 project.json、导出前全量校验、逐帧出 RGBA。
+ * CLI 入口：加载 project.json、导出前全量校验、逐帧出 RGBA、交 FFmpeg 合成。
  * 参数与退出码定义见 docs/SPEC-v1.md 第 4 节。
  */
+import path from 'node:path';
+
 import {
   parseArgs,
   planPresets,
   UsageError,
   EXIT_SUCCESS,
   EXIT_CONFIG_ERROR,
+  EXIT_FFMPEG_ERROR,
   EXIT_DATA_MISSING,
 } from './args.mjs';
 import { loadProject, loadSchema, validateProject } from './project.mjs';
@@ -20,6 +23,7 @@ import {
 } from './data.mjs';
 import { createCanvas } from './adapter.mjs';
 import { createCountingSink, runFrameLoop } from './frame-loop.mjs';
+import { buildFfmpegArgs, startFfmpeg, FfmpegError } from './ffmpeg.mjs';
 import { StageError, runExportValidation } from './validate-pipeline.mjs';
 import { motionAtFrame } from '../data/interpolate.mjs';
 import { prepareStatic } from '../shared/hud.js';
@@ -35,7 +39,7 @@ const USAGE = `用法：node cli/render.mjs --project <path/to/project.json> [op
                      不加载媒体、不启动 ffprobe、不启动 FFmpeg
   --dry-run          执行到导出前全量校验为止（含 ffprobe 尺寸比对），再跑完整帧循环、
                      把每帧 RGBA 写进计数 sink；不启动 FFmpeg
-  --out <path>       覆盖 output.path（本版本未实现）
+  --out <path>       覆盖 output.path（相对当前目录；未指定时用 project.json 里的相对路径）
   -h, --help         显示本帮助
 
 导出前校验顺序：配置 Schema → 联合校验（全部目标预设）→ 字体与资源 →
@@ -92,6 +96,34 @@ function formatDryRunReport({ projectPath, preset, videoPath, video, fps, alignm
   ].join('\n');
 }
 
+/** 成片报告：校验结论 + 实际写出的成片规格与帧循环统计。 */
+function formatRenderReport({
+  projectPath, preset, videoPath, video, fps, alignmentOffsetMs, totalFrames, outputPath, stats,
+}) {
+  const title = preset.displayName === undefined
+    ? `画布预设  ${preset.id}`
+    : `画布预设  ${preset.id}（${preset.displayName}）`;
+
+  return [
+    `校验通过：${projectPath}`,
+    '',
+    title,
+    `  画布尺寸      ${preset.width} × ${preset.height}`,
+    `  源视频        ${videoPath}`,
+    `  视频规格      ${video.width}×${video.height}，SAR ${video.sar}，DAR ${video.dar}，`
+      + `旋转 ${video.rotation}°，时长 ${video.durationSec.toFixed(3)} s`,
+    `  帧率          ${formatNumber(fps)} fps（固定），对齐偏移 ${formatNumber(alignmentOffsetMs)} ms`,
+    '',
+    `成片  ${outputPath}`,
+    `  宽高          ${preset.width} × ${preset.height}`,
+    `  帧率          ${formatNumber(fps)} fps`,
+    `  帧数          ${totalFrames}（= round(${formatNumber(video.durationSec)} × ${formatNumber(fps)})）`,
+    `  合成          overlay 0:0，源视频构图未被 scale / crop / pad 改动`,
+    `  RGBA 管道     ${stats.frames} 帧，${stats.bytesWritten} 字节`
+      + `（= ${stats.bytesPerFrame} × ${stats.frames}）`,
+  ].join('\n');
+}
+
 /** 数据源缺失 / 不可解析统一退出码 4。 */
 function loadDataOrExit(project, projectDir) {
   try {
@@ -106,10 +138,14 @@ function loadDataOrExit(project, projectDir) {
 }
 
 /**
- * `--dry-run`：导出前全量校验 → 真实跑完整帧循环 → 统计报告。
- * 帧循环把 RGBA 写进计数 sink，不 spawn 任何进程。
+ * 出片前的一切准备工作：导出前全量校验 → 数据源 → 静态层。
+ *
+ * `--dry-run` 与完整渲染共用这一段，保证两条路径的校验完全一致，
+ * 差别只在最后的 sink 是计数 sink 还是 FFmpeg 的 stdin。
+ *
+ * @returns {Promise<object>} 失败时返回 `{ exitCode }`
  */
-async function dryRun({ args, loaded }) {
+async function prepareExport({ args, loaded }) {
   const { project, path: projectPath, dir: projectDir } = loaded;
 
   let validation;
@@ -125,11 +161,11 @@ async function dryRun({ args, loaded }) {
       for (const message of error.message.split('\n')) {
         process.stderr.write(`错误：${message}\n`);
       }
-      return error.exitCode;
+      return { exitCode: error.exitCode };
     }
     if (error instanceof UsageError) {
       process.stderr.write(`错误：${error.message}\n`);
-      return EXIT_CONFIG_ERROR;
+      return { exitCode: EXIT_CONFIG_ERROR };
     }
     throw error;
   }
@@ -141,11 +177,11 @@ async function dryRun({ args, loaded }) {
     process.stderr.write(
       `错误：[ffprobe] 源视频时长 ${validation.video.durationSec} s × fps ${fps} 得到 0 帧，无法出片\n`,
     );
-    return EXIT_CONFIG_ERROR;
+    return { exitCode: EXIT_CONFIG_ERROR };
   }
 
   const data = loadDataOrExit(project, projectDir);
-  if (data === null) return EXIT_DATA_MISSING;
+  if (data === null) return { exitCode: EXIT_DATA_MISSING };
 
   // 静态层只预绘一次：底板、标签、单位不随帧变化。
   const { preset } = validation;
@@ -158,6 +194,21 @@ async function dryRun({ args, loaded }) {
     // 整场活动：路线轨迹、总距离与真实 Lap 刻度都从这里取。
     activity: data.activity,
   });
+
+  return { projectPath, validation, preset, data, fps, alignmentOffsetMs, totalFrames, staticLayer };
+}
+
+/**
+ * `--dry-run`：导出前全量校验 → 真实跑完整帧循环 → 统计报告。
+ * 帧循环把 RGBA 写进计数 sink，不 spawn 任何进程。
+ */
+async function dryRun({ args, loaded }) {
+  const prepared = await prepareExport({ args, loaded });
+  if (prepared.exitCode !== undefined) return prepared.exitCode;
+
+  const {
+    projectPath, validation, preset, data, fps, alignmentOffsetMs, totalFrames, staticLayer,
+  } = prepared;
 
   const sink = createCountingSink();
   const stats = await runFrameLoop({
@@ -177,6 +228,85 @@ async function dryRun({ args, loaded }) {
     video: validation.video,
     fps,
     alignmentOffsetMs,
+    stats,
+  })}\n`);
+  return EXIT_SUCCESS;
+}
+
+/**
+ * 完整渲染：校验通过后启动 FFmpeg，把帧循环的 sink 接到它的 stdin。
+ *
+ * 退出码口径：校验失败 2 / 数据源缺失 4 / FFmpeg 启动失败、非零退出、提前退出一律 3。
+ * 输出路径不做自动建目录：写不进去就交给 FFmpeg 报错，工具不隐式改动文件系统。
+ */
+async function renderVideo({ args, loaded }) {
+  const { project, dir: projectDir } = loaded;
+
+  // 成片路径：--out 优先（相对当前目录），否则 output.path（相对 project.json 所在目录）。
+  const configuredPath = project.output?.path;
+  if (args.out === undefined && (typeof configuredPath !== 'string' || configuredPath.trim() === '')) {
+    process.stderr.write(
+      '错误：未指定成片路径：请用 --out <path> 指定，或在 project.json 里配置 output.path\n',
+    );
+    return EXIT_CONFIG_ERROR;
+  }
+  const outputPath = args.out === undefined
+    ? path.resolve(projectDir, configuredPath)
+    : path.resolve(args.out);
+
+  const prepared = await prepareExport({ args, loaded });
+  if (prepared.exitCode !== undefined) return prepared.exitCode;
+
+  const {
+    projectPath, validation, preset, data, fps, alignmentOffsetMs, totalFrames, staticLayer,
+  } = prepared;
+
+  const argsForFfmpeg = buildFfmpegArgs({
+    inputPath: validation.videoPath,
+    outputPath,
+    width: preset.width,
+    height: preset.height,
+    fps,
+    totalFrames,
+    codec: project.output?.codec ?? 'libx264',
+    pixFmt: project.output?.pixFmt ?? 'yuv420p',
+  });
+
+  const ffmpeg = startFfmpeg({ args: argsForFfmpeg });
+  let stats;
+  try {
+    stats = await runFrameLoop({
+      motion: data.motion,
+      preset,
+      fps,
+      alignmentOffsetMs,
+      totalFrames,
+      static: staticLayer,
+      sink: ffmpeg.sink,
+    });
+    await ffmpeg.finish();
+  } catch (error) {
+    ffmpeg.abort();
+    if (error instanceof FfmpegError) {
+      // 环节名沿用导出前校验的最后一步，错误文本里能看出是 FFmpeg 这一步挂的。
+      const stage = new StageError('ffmpeg-start', error.message.split('\n'), EXIT_FFMPEG_ERROR);
+      for (const message of stage.message.split('\n')) {
+        process.stderr.write(`错误：${message}\n`);
+      }
+      return EXIT_FFMPEG_ERROR;
+    }
+    throw error;
+  }
+
+  process.stdout.write(`${formatRenderReport({
+    projectPath,
+    preset,
+    videoPath: validation.videoPath,
+    video: validation.video,
+    fps,
+    alignmentOffsetMs,
+    totalFrames,
+    outputPath,
     stats,
   })}\n`);
   return EXIT_SUCCESS;
@@ -307,11 +437,6 @@ async function main(argv) {
     return EXIT_CONFIG_ERROR;
   }
 
-  if (args.out !== undefined) {
-    process.stderr.write('错误：本版本尚未实现 --out（完整渲染由后续 ticket 提供）\n');
-    return EXIT_CONFIG_ERROR;
-  }
-
   if (args.dryRun) {
     return dryRun({ args, loaded });
   }
@@ -320,11 +445,7 @@ async function main(argv) {
     return inspectOnly({ args, loaded });
   }
 
-  process.stderr.write(
-    '错误：本版本尚未实现完整渲染（FFmpeg 合成由后续 ticket 提供）；'
-      + '可用 --dry-run 做导出前全量校验与出帧，或用 --validate-only 只做校验\n',
-  );
-  return EXIT_CONFIG_ERROR;
+  return renderVideo({ args, loaded });
 }
 
 process.exitCode = await main(process.argv.slice(2));

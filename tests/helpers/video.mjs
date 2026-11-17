@@ -30,19 +30,34 @@ function runFfmpeg(args) {
 /**
  * 生成一段纯色测试视频。
  *
+ * `color` 用来做像素比对（单色画面才容易判断「这里有没有被 HUD 盖住」）；
+ * `audio: true` 追加一条正弦音轨，用于验证成片保留音频。
+ *
  * @param {{ key: string, width: number, height: number, seconds?: number, fps?: number,
- *           sar?: string, rotation?: number }} options
+ *           sar?: string, rotation?: number, color?: string, audio?: boolean }} options
  * @returns {string} 绝对路径
  */
-export function makeVideo({ key, width, height, seconds = 1, fps = 30, sar = null, rotation = null }) {
+export function makeVideo({
+  key,
+  width,
+  height,
+  seconds = 1,
+  fps = 30,
+  sar = null,
+  rotation = null,
+  color = 'black',
+  audio = false,
+}) {
   const cached = cache.get(key);
   if (cached !== undefined) return cached;
 
   const dir = videoWorkDir();
   const plain = path.join(dir, `${key}.mp4`);
-  const args = ['-v', 'error', '-y', '-f', 'lavfi', '-i', `color=c=black:s=${width}x${height}:r=${fps}`,
-    '-t', String(seconds)];
+  const args = ['-v', 'error', '-y', '-f', 'lavfi', '-i', `color=c=${color}:s=${width}x${height}:r=${fps}`];
+  if (audio) args.push('-f', 'lavfi', '-i', `sine=frequency=440:sample_rate=44100:duration=${seconds}`);
+  args.push('-t', String(seconds));
   if (sar !== null) args.push('-vf', `setsar=${sar}`);
+  if (audio) args.push('-c:a', 'aac', '-shortest');
   args.push('-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-preset', 'ultrafast', plain);
   runFfmpeg(args);
 
