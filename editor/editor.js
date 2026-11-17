@@ -216,6 +216,9 @@ function rebuildPreview() {
       components: components(),
       metrics: state.metrics ?? {},
       activity: state.activity ?? undefined,
+      // 天气是静态覆盖：快照与时区都来自工程配置，编辑器不取数。
+      weatherSnapshot: state.project.weatherSnapshot,
+      timezone: state.project.timezone,
     });
     state.previewError = null;
   } catch (error) {

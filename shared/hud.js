@@ -7,10 +7,16 @@
  * 结构：
  * - `prepareStatic` 预绘一次静态层（底板、标签、单位、路线底图、进度轨道与刻度）到离屏位图，并返回绘制计划；
  * - `drawFrame` 每帧只做一次 `drawImage` 合成 + 只画会变的部分（数值、路线高亮与箭头、进度填充）；
- * - `DRAWERS` 按组件 id 分派，未实现的组件（weather，见 #10）直接跳过。
+ * - `DRAWERS` 按组件 id 分派；weather 是纯静态覆盖（整场不变，`dynamic` 恒为空）。
  */
 import { resolveComponentRect } from './layout.js';
-import { COLORS, FONT_FAMILY, resolveTheme } from './theme.js';
+import { CJK_FONT_FAMILY, COLORS, FONT_FAMILY, resolveTheme } from './theme.js';
+import {
+  DEFAULT_TIMEZONE,
+  describeWeatherCode,
+  formatWallClock,
+  mergeWeatherValues,
+} from './weather.js';
 import { shouldRender } from '../data/availability.mjs';
 
 /** 数字等宽检测：只有阿拉伯数字按固定步进，冒号 / 小数点仍用字形自身宽度。 */
@@ -21,6 +27,11 @@ function isDigit(char) {
 /** 组装 Canvas 字体串；字重决定选中哪一份 Inter 文件。 */
 function fontString({ weight, size }) {
   return `${weight} ${size}px ${FONT_FAMILY}`;
+}
+
+/** 纯 CJK 短语的字体串（Inter 无汉字字形，见 theme.js 的 CJK_FONT_FAMILY 说明）。 */
+function cjkFontString({ weight, size }) {
+  return `${weight} ${size}px "${CJK_FONT_FAMILY}"`;
 }
 
 /**
@@ -679,14 +690,169 @@ function drawProgressFrame(ctx, progress) {
   ctx.fill();
 }
 
+/** 温度：取整（快照的小数位对画面没有意义，也不做单位换算）；单位单独用 unit 字号画。 */
+function formatTemperature(celsius) {
+  return Number.isFinite(celsius) ? String(Math.round(celsius)) : null;
+}
+
+/** 相对湿度：整数百分比。 */
+function formatHumidity(pct) {
+  return Number.isFinite(pct) ? `${Math.round(pct)}%` : null;
+}
+
+/** 降水量：一位小数 + MM。 */
+function formatPrecipitation(mm) {
+  return Number.isFinite(mm) ? `${mm.toFixed(1)} MM` : null;
+}
+
+/**
+ * 天气组件：静态覆盖卡片（GLOSSARY「天气快照」「静态覆盖」「墙钟」）。
+ *
+ * 全部内容整场活动不变，因此只进静态层：`dynamic` 恒为空数组，
+ * `drawFrame` 只合成一次离屏位图，不重排文字、不描路径。
+ *
+ * 显示规则（ADR 0004：`shouldRender = configEnabled && dataAvailable`）：
+ * - 组件不可见、没有快照、或快照里一个可用数值都没有 → 整块不画（不画 0、不画占位）；
+ * - 缺某个数值就少那一段：只有温度时没有湿度 / 降水那段，未知天气码省略短语；
+ * - 墙钟取 `activity.startTimeUtc` 按配置时区换算，与视频当前时刻无关。
+ */
+function planWeather(ctx, { preset, component, activity, weatherSnapshot, timezone }) {
+  const merged = mergeWeatherValues(weatherSnapshot);
+  if (!shouldRender(component.visible === true, merged !== null)) return null;
+
+  const values = merged.values;
+  const phrase = describeWeatherCode(values.weatherCode);
+  const wallClock = formatWallClock(activity?.startTimeUtc, timezone ?? DEFAULT_TIMEZONE);
+  const temperature = formatTemperature(values.temperatureC);
+  const detailParts = [formatHumidity(values.humidityPct), formatPrecipitation(values.precipitationMm)]
+    .filter((part) => part !== null);
+  const detail = detailParts.length === 0 ? null : detailParts.join(' · ');
+
+  // 只有标签和墙钟时不成卡片：没有天气内容就不占位。
+  if (temperature === null && phrase === null && detail === null) return null;
+
+  const theme = resolveTheme(preset);
+  const style = theme.weather;
+  const rect = resolveComponentRect(component, preset);
+  const labelLine = Math.round(style.label.size * style.label.lineHeight);
+  const valueLine = Math.round(style.value.size * style.value.lineHeight);
+  const detailLine = Math.round(style.unit.size * style.unit.lineHeight);
+  const hasValueRow = temperature !== null || phrase !== null;
+
+  // 从上往下累加行高，面板高度随可用内容收缩（与数据卡一致，最后一行不留间距）。
+  // 这里只算相对面板顶部的偏移，确定面板位置后再加到基线上。
+  let offset = style.paddingY;
+  const labelOffset = offset + Math.round(style.label.size * style.ascentRatio);
+  offset += labelLine;
+  let valueOffset = null;
+  if (hasValueRow) {
+    offset += style.labelToValueGap;
+    valueOffset = offset + Math.round(style.value.size * style.ascentRatio);
+    offset += valueLine;
+  }
+  let detailOffset = null;
+  if (detail !== null) {
+    offset += style.valueToDetailGap;
+    detailOffset = offset + Math.round(style.unit.size * style.ascentRatio);
+    offset += detailLine;
+  }
+  const panelHeight = offset + style.paddingY;
+
+  if (panelHeight > rect.height) {
+    throw new Error(
+      `组件 ${component.id} 的矩形高 ${rect.height} px 容不下天气卡`
+        + `（需要 ${panelHeight} px），请增大 rowSpan`,
+    );
+  }
+
+  const panel = {
+    x: rect.x,
+    y: component.anchor.startsWith('bottom') ? rect.y + rect.height - panelHeight : rect.y,
+    width: rect.width,
+    height: panelHeight,
+  };
+
+  const textX = panel.x + style.paddingX;
+  const labelBaseline = panel.y + labelOffset;
+  const valueBaseline = valueOffset === null ? null : panel.y + valueOffset;
+  const detailBaseline = detailOffset === null ? null : panel.y + detailOffset;
+  const labelFont = fontString(style.label);
+  const valueFont = fontString(style.value);
+  const unitFont = fontString(style.unit);
+  const staticTexts = [
+    { text: 'WEATHER', font: labelFont, color: COLORS.label, x: textX, baseline: labelBaseline },
+  ];
+
+  // 墙钟右对齐：对齐位置在预绘时按标签字体量好，每帧不再测量。
+  // 位置取整：两端 measureText 的小数位可能差一点点，取整后文字落在同一像素相位上。
+  if (wallClock !== null) {
+    ctx.font = labelFont;
+    const clockWidth = Math.round(ctx.measureText(wallClock).width);
+    staticTexts.push({
+      text: wallClock,
+      font: labelFont,
+      color: COLORS.label,
+      x: panel.x + panel.width - style.paddingX - clockWidth,
+      baseline: labelBaseline,
+    });
+  }
+
+  if (hasValueRow) {
+    // 与数据卡一致：主数值用 value 字号，单位与短语用 unit 字号跟在后面。
+    // 没有温度时退化为短语本身（用 value 字号），不重复画两遍。
+    const primary = temperature ?? phrase;
+    // 没有温度时短语就是主内容：用 CJK 字体 + value 字号。
+    const primaryFont = temperature === null ? cjkFontString(style.value) : valueFont;
+    staticTexts.push({ text: primary, font: primaryFont, color: COLORS.value, x: textX, baseline: valueBaseline });
+
+    if (temperature !== null) {
+      ctx.font = valueFont;
+      let cursorX = textX + Math.round(ctx.measureText(primary).width) + style.unitGap;
+      ctx.font = unitFont;
+      const unitText = '°C';
+      staticTexts.push({ text: unitText, font: unitFont, color: COLORS.label, x: cursorX, baseline: valueBaseline });
+      cursorX += Math.round(ctx.measureText(unitText).width) + style.phraseGap;
+      if (phrase !== null) {
+        staticTexts.push({
+          text: phrase,
+          font: cjkFontString(style.unit),
+          color: COLORS.label,
+          x: cursorX,
+          baseline: valueBaseline,
+        });
+      }
+    }
+  }
+
+  if (detail !== null) {
+    staticTexts.push({ text: detail, font: unitFont, color: COLORS.label, x: textX, baseline: detailBaseline });
+  }
+
+  return {
+    componentId: component.id,
+    rect,
+    panel: { ...panel, radius: theme.radius, strokeWidth: theme.strokeWidth },
+    staticTexts,
+    // 天气与墙钟都是静态覆盖：没有任何逐帧内容。
+    dynamic: [],
+    weather: {
+      values,
+      phrase,
+      wallClock,
+      overridden: merged.overridden,
+    },
+  };
+}
+
 /**
  * 按组件 id 分派。
- * weather（#10）在本票不实现——没有条目就是「跳过」。
+ * 未列出的组件一律跳过（没有绘制实现就不画）。
  */
 const DRAWERS = {
   metrics: planMetrics,
   route: planRoute,
   progress: planProgress,
+  weather: planWeather,
 };
 
 /** 绘制顺序：`zIndex` 小的先画（ADR 0005：层级由布局显式给出）。 */
@@ -702,13 +868,13 @@ function sortForDraw(components) {
 }
 
 /** 生成绘制计划；同一份计划同时供静态层、每帧数值与关键区域使用。 */
-function buildPlan(ctx, { preset, components, metrics, activity }) {
+function buildPlan(ctx, { preset, components, metrics, activity, weatherSnapshot, timezone }) {
   const plan = [];
   for (const component of sortForDraw(components)) {
     if (typeof component?.id !== 'string') continue;
     const drawer = DRAWERS[component.id];
     if (drawer === undefined) continue;
-    const item = drawer(ctx, { preset, component, metrics, activity });
+    const item = drawer(ctx, { preset, component, metrics, activity, weatherSnapshot, timezone });
     if (item !== null) plan.push(item);
   }
   return plan;
@@ -754,12 +920,16 @@ function drawStaticLayer(ctx, plan) {
  * `activity` 是整场活动的数据（`readTcx` 的形状），提供路线轨迹与总距离；
  * `metrics` 只描述当前时刻。两者分开，避免把整条轨迹塞进每一帧的指标里。
  *
+ * `weatherSnapshot` 与 `timezone` 是静态覆盖（ADR 0005）：天气卡只读配置里的快照，
+ * 渲染期不联网、不读时钟；缺快照时整块不画。
+ *
  * @param {CanvasRenderingContext2D} ctx 离屏画布的上下文
- * @param {{ preset: object, components: object[], metrics: object, activity?: object }} input
+ * @param {{ preset: object, components: object[], metrics: object, activity?: object,
+ *           weatherSnapshot?: object, timezone?: string }} input
  * @returns {{ canvas: object, plan: object[] }}
  */
-export function prepareStatic(ctx, { preset, components, metrics, activity }) {
-  const plan = buildPlan(ctx, { preset, components, metrics, activity });
+export function prepareStatic(ctx, { preset, components, metrics, activity, weatherSnapshot, timezone }) {
+  const plan = buildPlan(ctx, { preset, components, metrics, activity, weatherSnapshot, timezone });
   drawStaticLayer(ctx, plan);
   return { canvas: ctx.canvas, plan };
 }
@@ -838,11 +1008,14 @@ function textBox(ctx, entry, preset) {
  * 返回未合并的矩形列表，合并与面积统计由调用方完成。
  *
  * @param {CanvasRenderingContext2D} ctx 只用于测量文字的上下文
- * @param {{ preset: object, components: object[], metrics: object, activity?: object }} input
+ * @param {{ preset: object, components: object[], metrics: object, activity?: object,
+ *           weatherSnapshot?: object, timezone?: string }} input
  * @returns {{ kind: 'component' | 'text', x: number, y: number, width: number, height: number }[]}
  */
-export function collectCriticalRegions(ctx, { preset, components, metrics, activity }) {
-  const plan = buildPlan(ctx, { preset, components, metrics, activity });
+export function collectCriticalRegions(ctx, {
+  preset, components, metrics, activity, weatherSnapshot, timezone,
+}) {
+  const plan = buildPlan(ctx, { preset, components, metrics, activity, weatherSnapshot, timezone });
   const inflate = Math.max(1, Math.round(COMPONENT_REGION_INFLATE_PX * (preset?.scale ?? 1)));
   const regions = [];
 

@@ -193,6 +193,9 @@ async function prepareExport({ args, loaded }) {
     metrics: { ...firstFrame.metrics, availability: data.motion.availability },
     // 整场活动：路线轨迹、总距离与真实 Lap 刻度都从这里取。
     activity: data.activity,
+    // 静态覆盖：天气只读配置里的快照，渲染期不联网、不读时钟（ticket #10）。
+    weatherSnapshot: project.weatherSnapshot,
+    timezone: project.timezone,
   });
 
   return { projectPath, validation, preset, data, fps, alignmentOffsetMs, totalFrames, staticLayer };

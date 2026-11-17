@@ -46,6 +46,8 @@ export function renderSample({ presetId, sampleId = GOLDEN_SAMPLE_ID, sample = l
     components: sample.layout.components,
     metrics: entry.metrics,
     activity: sample.activity,
+    weatherSnapshot: sample.weatherSnapshot,
+    timezone: sample.timezone,
   });
 
   drawFrame(ctx, { preset, metrics: entry.metrics, static: layer });

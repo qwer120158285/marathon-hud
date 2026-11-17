@@ -36,6 +36,9 @@ const layer = prepareStatic(staticLayer.ctx, {
   components: sample.layout.components,
   metrics: entry.metrics,
   activity: sample.activity,
+  // 静态覆盖：天气快照与时区都来自示意数据，渲染期不联网。
+  weatherSnapshot: sample.weatherSnapshot,
+  timezone: sample.timezone,
 });
 
 drawFrame(ctx, { preset, metrics: entry.metrics, static: layer });
