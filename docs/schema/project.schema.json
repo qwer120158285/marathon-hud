@@ -174,7 +174,22 @@
         },
         "manualOverride": {
           "type": "object",
-          "description": "使用者手工覆盖值优先于 values"
+          "additionalProperties": false,
+          "description": "使用者手工覆盖的数值，优先于 values；只允许覆盖数值，不能改 source / requestUrl / query / grid / fetchedAt",
+          "properties": {
+            "temperatureC": {
+              "type": "number"
+            },
+            "humidityPct": {
+              "type": "number"
+            },
+            "precipitationMm": {
+              "type": "number"
+            },
+            "weatherCode": {
+              "type": "integer"
+            }
+          }
         }
       }
     },

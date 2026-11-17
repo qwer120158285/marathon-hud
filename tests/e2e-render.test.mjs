@@ -149,10 +149,9 @@ test('完整渲染：2 s 1080×1920 @30fps → 成片规格、帧数、HUD 位�
     assert.equal(final.width, PRESET.width);
     assert.equal(final.height, PRESET.height);
 
-    // 会落笔的三个组件：路线、进度、指标。各自的边界矩形由布局决定（fixture）。
-    // weather 尚未实现（#10），不参与。
+    // 会落笔的四个组件：路线、进度、指标、天气（静态覆盖）。各自的边界矩形由布局决定（fixture）。
     const layout = readValidProject().layout.components;
-    const rendered = ['route', 'progress', 'metrics'].map((id) => ({
+    const rendered = ['route', 'progress', 'metrics', 'weather'].map((id) => ({
       id,
       rect: resolveComponentRect(layout.find((item) => item.id === id), PRESET),
     }));
@@ -192,6 +191,8 @@ test('完整渲染：2 s 1080×1920 @30fps → 成片规格、帧数、HUD 位�
     assert.ok(inkByComponent.get('metrics') > 20000, `指标卡墨迹 ${inkByComponent.get('metrics')} 太少`);
     assert.ok(inkByComponent.get('progress') > 5000, `进度卡墨迹 ${inkByComponent.get('progress')} 太少`);
     assert.ok(inkByComponent.get('route') > 1000, `路线墨迹 ${inkByComponent.get('route')} 太少`);
+    // 天气卡是静态覆盖（底板 + 温度 + 墙钟）；缺快照时这条断言会退化成 0。
+    assert.ok(inkByComponent.get('weather') > 5000, `天气卡墨迹 ${inkByComponent.get('weather')} 太少`);
     // 组件矩形之外必须还是源视频：证明没有整体平移 / 拉伸 / 裁切。
     assert.equal(outsideCount, 0, `组件矩形外有 ${outsideCount} 个 HUD 像素`);
     assert.ok(

@@ -637,6 +637,9 @@ export function criticalRegionsFor({ presetId, sampleId = GOLDEN_SAMPLE_ID, samp
     components: sample.layout.components,
     metrics: entry.metrics,
     activity: sample.activity,
+    // 天气卡是静态覆盖（ticket #10）：不把快照传进来，它的文字框就落不进文字区判据。
+    weatherSnapshot: sample.weatherSnapshot,
+    timezone: sample.timezone,
   });
 }
 

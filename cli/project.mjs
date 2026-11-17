@@ -2,7 +2,7 @@
  * project.json 的读取（Node 侧）。
  * 校验规则见 shared/validate.js 与 docs/schema/project.schema.json。
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -104,4 +104,27 @@ export function loadProject(filePath) {
   }
 
   return { project, path: absolutePath, dir: path.dirname(absolutePath) };
+}
+
+/**
+ * 写回 project.json（编辑期用，例如写天气快照）。
+ *
+ * 顺序即安全边界：先校验整份配置 → 写同目录临时文件 → `rename` 原子替换。
+ * 校验失败或写盘失败都不会把原文件改成半份坏配置。
+ *
+ * @param {string} filePath project.json 路径
+ * @param {object} project 完整的工程配置（不是片段）
+ * @returns {object} 写入的配置
+ */
+export function saveProject(filePath, project) {
+  const errors = validateProject(project, loadSchema());
+  if (errors.length > 0) {
+    throw new ProjectConfigError(`配置不合法，已拒绝写入：${filePath}\n${errors.join('\n')}`);
+  }
+
+  const absolutePath = path.resolve(filePath);
+  const tempPath = `${absolutePath}.tmp-${process.pid}`;
+  writeFileSync(tempPath, `${JSON.stringify(project, null, 2)}\n`);
+  renameSync(tempPath, absolutePath);
+  return project;
 }

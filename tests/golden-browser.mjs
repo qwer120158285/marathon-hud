@@ -14,6 +14,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { registerFonts } from '../cli/adapter.mjs';
 import { BUILTIN_PRESET_IDS, resolvePreset } from '../shared/presets.js';
 import { compareGolden, formatReport } from './golden-compare.mjs';
 
@@ -227,6 +228,10 @@ async function capturePng({ chrome, url, width, height, outPath, profileDir }) {
  */
 export async function runBrowserGolden({ presetIds = BUILTIN_PRESET_IDS, outDir, chrome = findChrome() } = {}) {
   if (chrome === null) throw new Error('未找到 Chrome，无法进行浏览器侧出图');
+
+  // 关键区域由 shared/hud.js 按「测量宽度」算出来：先注册字体，量出来的框才和基准图一致。
+  // 不注册会退回系统字体，文字框位置偏移，比对口径随之失真（门槛不变，输入错了）。
+  await registerFonts();
 
   const workDir = outDir ?? mkdtempSync(path.join(tmpdir(), 'hud-browser-'));
   mkdirSync(workDir, { recursive: true });

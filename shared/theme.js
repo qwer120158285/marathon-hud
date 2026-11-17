@@ -9,6 +9,16 @@
 /** 字体家族名：两端用同一批 Inter 文件注册成这个名字（见 shared/fonts/FONTS.json）。 */
 export const FONT_FAMILY = 'Inter';
 
+/**
+ * CJK 短语用的字体：Inter 没有汉字字形，仓库只 vendoring 了 Inter（CJK 字体体积大且许可受限）。
+ *
+ * 为什么不用 `Inter, "PingFang SC"` 这种回退栈：`@napi-rs/canvas` 的字体解析只认一个家族名，
+ * 传了列表会把整串文字都落到列表末尾的字体上（实测 40 px 下数字宽度从 25.2 变 24.0），
+ * 数字就不再是 Inter，两端还会各走一套字形。所以只在纯中文短语上单独指定系统字体。
+ * 代价：CJK 字形依赖本机字体，换机器需重跑基准图标定（与 ADR 0001 的跨光栅器口径一致）。
+ */
+export const CJK_FONT_FAMILY = 'PingFang SC';
+
 export const COLORS = {
   /** 数据卡底板：深色半透明，保证压在任意画面上都有足够对比。 */
   panelFill: 'rgba(8, 14, 24, 0.76)',
@@ -80,6 +90,23 @@ export const PROGRESS_CARD = {
   ascentRatio: 0.78,
 };
 
+/** 天气组件在 1080 短边下的样式（静态覆盖卡片：一次预绘，整场不变）。 */
+export const WEATHER_CARD = {
+  paddingX: 22,
+  paddingY: 18,
+  /** 标签行与数值行、数值行与详情行之间的额外留白。 */
+  labelToValueGap: 2,
+  valueToDetailGap: 4,
+  /** 温度数值与单位、单位与天气短语之间的水平间距（单位要落在数值文字框之外）。 */
+  unitGap: 16,
+  phraseGap: 24,
+  /** 字号与数据卡一致（METRICS_CARD），视觉上属于同一套卡片。 */
+  label: { size: 17, weight: 600, lineHeight: 1.5 },
+  value: { size: 46, weight: 700, lineHeight: 1.15 },
+  unit: { size: 15, weight: 500, lineHeight: 1.4 },
+  ascentRatio: 0.78,
+};
+
 const round = (value) => Math.round(value);
 
 /**
@@ -133,6 +160,18 @@ export function resolveTheme(preset) {
       trackColor: PROGRESS_CARD.trackColor,
       fillColor: PROGRESS_CARD.fillColor,
       ascentRatio: PROGRESS_CARD.ascentRatio,
+    },
+    weather: {
+      paddingX: px(WEATHER_CARD.paddingX),
+      paddingY: px(WEATHER_CARD.paddingY),
+      unitGap: px(WEATHER_CARD.unitGap),
+      labelToValueGap: px(WEATHER_CARD.labelToValueGap),
+      valueToDetailGap: px(WEATHER_CARD.valueToDetailGap),
+      phraseGap: px(WEATHER_CARD.phraseGap),
+      label: font(WEATHER_CARD.label),
+      value: font(WEATHER_CARD.value),
+      unit: font(WEATHER_CARD.unit),
+      ascentRatio: WEATHER_CARD.ascentRatio,
     },
   };
 }
