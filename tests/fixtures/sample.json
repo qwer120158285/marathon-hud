@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "note": "固定示意数据：与 activity_662602587.tcx 无关，只用于基准图与绘制测试（两端共用）。",
+  "targetPresets": [
+    "douyin-portrait",
+    "bilibili-landscape"
+  ],
+  "layout": {
+    "sourcePresetId": "douyin-portrait",
+    "components": [
+      {
+        "id": "route",
+        "anchor": "top-left",
+        "col": 2,
+        "row": 9,
+        "colSpan": 7,
+        "rowSpan": 7,
+        "zIndex": 1,
+        "visible": true
+      },
+      {
+        "id": "progress",
+        "anchor": "top-left",
+        "col": 2,
+        "row": 5,
+        "colSpan": 20,
+        "rowSpan": 2,
+        "zIndex": 2,
+        "visible": true,
+        "subcomponents": {
+          "lapMarkers": false
+        }
+      },
+      {
+        "id": "weather",
+        "anchor": "bottom-right",
+        "col": 2,
+        "row": 6,
+        "colSpan": 7,
+        "rowSpan": 5,
+        "zIndex": 2,
+        "visible": true
+      },
+      {
+        "id": "metrics",
+        "anchor": "bottom-left",
+        "col": 2,
+        "row": 8,
+        "colSpan": 8,
+        "rowSpan": 8,
+        "zIndex": 3,
+        "visible": true,
+        "subcomponents": {
+          "power": false,
+          "elevation": false
+        }
+      }
+    ]
+  },
+  "samples": [
+    {
+      "id": "full",
+      "timeMs": 754000,
+      "metrics": {
+        "paceSecPerKm": 332.4,
+        "heartRateBpm": 152,
+        "cadenceSpm": 184,
+        "distanceM": 3210.5,
+        "availability": {
+          "pace": true,
+          "heartRate": true,
+          "cadence": true,
+          "altitude": true,
+          "power": false,
+          "gps": true,
+          "gct": false,
+          "lapMarkers": false
+        }
+      }
+    },
+    {
+      "id": "no-cadence",
+      "timeMs": 754000,
+      "metrics": {
+        "paceSecPerKm": 318.7,
+        "heartRateBpm": 168,
+        "cadenceSpm": null,
+        "distanceM": 3210.5,
+        "availability": {
+          "pace": true,
+          "heartRate": true,
+          "cadence": false,
+          "altitude": true,
+          "power": false,
+          "gps": true,
+          "gct": false,
+          "lapMarkers": false
+        }
+      }
+    },
+    {
+      "id": "pace-only",
+      "timeMs": 754000,
+      "metrics": {
+        "paceSecPerKm": 402.6,
+        "heartRateBpm": null,
+        "cadenceSpm": null,
+        "distanceM": 3210.5,
+        "availability": {
+          "pace": true,
+          "heartRate": false,
+          "cadence": false,
+          "altitude": false,
+          "power": false,
+          "gps": false,
+          "gct": false,
+          "lapMarkers": false
+        }
+      }
+    }
+  ]
+}

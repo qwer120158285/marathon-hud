@@ -6,7 +6,10 @@
   "description": "把运动记录渲染成带透明通道的 HUD 帧、再与源视频合成成片的离线工具链",
   "scripts": {
     "test": "node --test",
-    "cli": "node cli/render.mjs"
+    "cli": "node cli/render.mjs",
+    "golden:generate": "node tests/golden-generate.mjs",
+    "golden:browser": "node tests/golden-browser.mjs",
+    "golden:compare": "node tests/golden-compare.mjs"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.100"
