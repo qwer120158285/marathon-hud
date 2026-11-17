@@ -6,12 +6,16 @@
 
 判据与阈值没有为通过而放宽：基准图口径仍是 ADR 0001 修订 1 的原始阈值。
 
+**证据类型**：第 1、2 条的证据是 headless 自动断言（`node:test` 进程边界 + Chrome headless），
+不是「人工点开编辑器确认可用」；第 3–8 条是命令行工具与 ffprobe / 像素比对的实测输出。
+每条都注明了这一点，避免把自动断言读成人工验收。
+
 ## 结论
 
 | # | 验收项 | 结果 |
 | --- | --- | --- |
-| 1 | 编辑器可以加载并修改 `project.json` | 通过 |
-| 2 | 网格布局、组件拖动、缩放（整数 Resize）与联合预设校验 | 通过 |
+| 1 | 编辑器可以加载并修改 `project.json` | 通过（headless 自动断言） |
+| 2 | 网格布局、组件拖动、缩放（整数 Resize）与联合预设校验 | 通过（headless 自动断言） |
 | 3 | 浏览器与 Node 使用共享绘制模块 | 通过 |
 | 4 | CLI 逐帧生成完整 RGBA 流 | 通过 |
 | 5 | FFmpeg 能将 HUD 与原视频合成 | 通过 |
@@ -30,14 +34,15 @@ npm run editor        # http://127.0.0.1:8000/ → 项目填 project.json → �
 node --test tests/editor-server.test.mjs tests/editor-browser.test.mjs
 ```
 
-**实测结果**
+**实测结果（headless 自动断言）**
 
-- 编辑器的 `GET /api/project?path=project.json` 读取仓库根配置；`PUT` 落盘前用与 CLI 相同的
-  Schema 契约校验，`PUT 合法配置落盘，并且能被 CLI 的 Schema 校验通过`（通过）。
+- 编辑器的 `GET /api/project?path=project.json` 读取仓库根配置；`PUT` 落盘前先用与 CLI 相同的
+  Schema 契约校验，再对 `targetPresets[]` 全部预设跑联合校验；`PUT 合法配置落盘，并且能被 CLI 的
+  Schema 校验通过`（通过）。
 - 浏览器侧（Chrome headless）：`编辑器页面载入示例配置：无 console 报错、预览有像素、预设与组件正确渲染`（通过）、
   `载入示例配置、切换组件显隐后保存，落盘 JSON 通过 Schema 校验`（通过）。
-- 非法配置返回 422、错误文本回传、磁盘文件不被覆盖（两个用例通过）。
-- `tests/editor-server.test.mjs` 8 个用例、`tests/editor-browser.test.mjs` 4 个用例，全部通过。
+- 非法配置返回 422、错误文本回传、磁盘文件不被覆盖；横屏越界的候选布局同样 422 且点名预设 / 组件 / 越界量。
+- `tests/editor-server.test.mjs` 9 个用例、`tests/editor-browser.test.mjs` 4 个用例，全部通过。
 
 ## 2. 网格布局、拖动、整数 Resize 与联合预设校验
 
@@ -48,7 +53,7 @@ node --test tests/editor-layout.test.mjs tests/joint-validation.test.mjs tests/l
 node cli/render.mjs --project project.json --validate-only
 ```
 
-**实测结果**
+**实测结果（headless 自动断言）**
 
 - `拖动 37 × −18 px 后吸附到整数格位，并推导出最近的左下锚点`：通过。
 - `东侧 Resize 87 px 吸附为跨 8 格，且仍贴在安全区底边`：通过（Resize 只按整数格）。
@@ -57,7 +62,8 @@ node cli/render.mjs --project project.json --validate-only
 - `全部目标预设通过时允许保存，层叠只作为提示返回`：通过（重叠只提示、不阻断）。
 - `--validate-only` 实测：`project.json` 的两个目标预设都通过联合校验 ——
   抖音竖屏 27 列 × 48 行、可放置列 2–24 / 行 4–41；B 站横屏 48 列 × 27 行、可放置列 2–45 / 行 2–23；
-  `联合校验通过：douyin-portrait、bilibili-landscape（4 个组件）`。
+  `联合校验通过：douyin-portrait、bilibili-landscape（4 个组件）`。即使命令行带了
+  `--preset douyin-portrait`，本命令仍会打印两个预设段（它总是校验全部目标预设）。
 
 ## 3. 浏览器与 Node 使用共享绘制模块
 
@@ -85,17 +91,40 @@ node cli/render.mjs --project project.json --preset douyin-portrait --dry-run
 node cli/render.mjs --project project.landscape.json --preset bilibili-landscape --dry-run
 ```
 
-**实测结果**
+**实测结果（两条命令各自独立运行、退出码 0）**
+
+竖屏：
 
 ```
+画布预设  douyin-portrait（抖音竖屏）
+  画布尺寸      1080 × 1920
+  视频规格      1080×1920，SAR 1:1，DAR 9:16，旋转 0°，时长 12.000 s
+  帧率          30 fps（固定），对齐偏移 0 ms
+
 帧循环完成：360 帧
   每帧字节     1080 × 1920 × 4 = 8294400 字节
   写入 RGBA 管道 2985984000 字节（= 8294400 × 360）
+未启动 FFmpeg（--dry-run 只做导出前校验与出帧，不合成）
 ```
 
-两段素材同为 1080 × 1920 像素规模（1920×1080 的像素总数相同），字节数等式都成立：
-`2985984000 = 8294400 × 360`，退出码 0。端到端用例里 FFmpeg 收到 360 帧后正常结束，
-成片 `nb_frames` 也是 360，没有丢帧。
+横屏：
+
+```
+画布预设  bilibili-landscape（B 站横屏）
+  画布尺寸      1920 × 1080
+  视频规格      1920×1080，SAR 1:1，DAR 16:9，旋转 0°，时长 12.000 s
+  帧率          30 fps（固定），对齐偏移 0 ms
+
+帧循环完成：360 帧
+  每帧字节     1920 × 1080 × 4 = 8294400 字节
+  写入 RGBA 管道 2985984000 字节（= 8294400 × 360）
+未启动 FFmpeg（--dry-run 只做导出前校验与出帧，不合成）
+```
+
+两条输出都是本机真实运行的结果，横屏这一段不是由竖屏「像素总数相同」推断出来的：
+宽高与视频规格来自各自的 ffprobe 实测。两边的字节数恰好相同，是因为
+1080×1920 与 1920×1080 的像素总数相等（都是 2073600），每帧像素负载都是 8294400 字节。
+端到端用例里 FFmpeg 收到 360 帧后正常结束，成片 `nb_frames` 也是 360，没有丢帧。
 
 ## 5. FFmpeg 将 HUD 与原视频合成
 
@@ -123,8 +152,12 @@ node --test tests/e2e-render.test.mjs
 - 四类组件都在自己的组件矩形内留下墨迹；矩形外没有 HUD 像素，只有 H.264 二次编码噪声。
 - `tests/e2e-render.test.mjs` 6 个用例全部通过，含音频轨保留、`--out` 覆盖、
   FFmpeg 失败退出码 3（`output.path` 与 `--out` 两条路径各一个进程级用例）。
-- 「源视频构图未被改动」由 FFmpeg 参数保证：滤镜链只有 `fps` / `setpts` / `format` / `overlay=0:0`，
-  没有 scale / crop / pad（`tests/ffmpeg-args.test.mjs`）。
+- 「源视频构图未被改动」分两层论证，避免只凭参数或只凭观感：
+  1. **参数级**：滤镜链只有 `fps` / `setpts` / `format` / `overlay=0:0`，没有 scale / crop / pad
+     （`tests/ffmpeg-args.test.mjs`）；
+  2. **抽帧像素级**：同一时刻的源视频帧 vs 成片帧逐像素比对，组件矩形外（外扩 24 px，
+     扣掉路线箭头）的越界 HUD 像素为 0，PSNR 41.20 dB（竖屏）/ 39.24 dB（横屏），
+     结构差异 0.002% / 0.011%——只剩 H.264 二次编码噪声，不是平移或缩放造成的结构性差异。
 
 ## 6. 输出 1080p 竖屏与 1080p 横屏 MP4
 
@@ -156,7 +189,13 @@ npm run accept:golden
 
 **实测结果**
 
-Node 侧（`@napi-rs/canvas`）两个预设都是 0 差异（基准图由同一实现生成，必须逐字节可复现）：
+**基准图的版本**：T11 把天气短语从系统 CJK 字体改为随项目打包的英文短语（ADR 0001「字体」），
+两张基准图随之重新生成：与上一版相比各差 **586 个像素**（单通道 >8/255 口径），差异包围盒只在
+天气组件的短语区域（竖屏 x 858–918 / y 1608–1621；横屏 x 1698–1758 / y 768–781），其余区域逐字节相同。
+因此下面的「Node 侧 0 差异」是**同源回归检查**（同一实现重跑必须逐字节复现），
+真正的**跨实现检查**是浏览器侧那两行。
+
+Node 侧（`@napi-rs/canvas`）两个预设都是 0 差异：
 
 - `douyin-portrait` / `bilibili-landscape`：全图非文字 0.0000%、关键区域 0.0000%、文字区全部 0。
 - `基准图可重复生成：重跑得到逐字节相同的 PNG`：通过。
@@ -172,7 +211,31 @@ Node 侧（`@napi-rs/canvas`）两个预设都是 0 差异（基准图由同一�
 墨量 ≤20%、粗降采样 ≤6% —— 全部通过。`tests/golden.test.mjs` 的 4 条失败用例
 （组件平移 1 px、文字平移 2 px、墨量减半、换数字）仍然会被判失败，判据没有退化。
 
+两行文字类指标完全相同（质心 0.572 px、包围盒 1 px、轮廓 0 px、墨量 11.4524%、相关 0.9899、
+L1 0.0422、12× 降采样 1.6026%），**不是复制粘贴**：两个画布预设的短边都是 1080 px，
+`resolveTheme(preset)` 给出的字号与间距完全一致；同一批字形在 Chrome 与 Skia 之间的光栅器差异
+随字号一致，所以这些分项逐位相同。非文字百分比在最后一位有差别（0.0052% vs 0.0053%），
+原因是两个画布的总像素构成不同，分母不同——这也说明两行是各自算出来的。
+
 ## 8. 至少一段真实视频的端到端渲染验证
+
+**素材准备（可复现步骤）**
+
+真实素材不入库（`*.mp4` 被 `.gitignore` 忽略）。本机两段素材各取 12 s，按画布预设缩放并裁齐：
+
+```bash
+npm run assets:prepare
+# 等价命令（本机素材路径可换）：
+ffmpeg -y -t 12 -i ~/Movies/ba8b092acd78ac0a2bbc19583a39af55.mp4 \
+  -vf "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1" \
+  -r 30 -an -c:v libx264 -crf 18 -preset medium -pix_fmt yuv420p assets/run-portrait.mp4
+ffmpeg -y -t 12 -i ~/Movies/bgm.mp4 \
+  -vf "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1" \
+  -r 30 -an -c:v libx264 -crf 18 -preset medium -pix_fmt yuv420p assets/run-landscape.mp4
+```
+
+素材缺失时 `tests/acceptance-video.mjs` 会打印同一段指引（而不是只报「找不到文件」），
+退出码 1。缩放 / 裁剪只发生在素材准备阶段，渲染工具本身不做 scale / crop / pad。
 
 **怎么验证**
 
