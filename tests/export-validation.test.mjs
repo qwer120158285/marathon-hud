@@ -14,7 +14,7 @@ import path from 'node:path';
 
 import { runCli, readValidProject, REPO_ROOT } from './helpers/cli.mjs';
 import { makeVideo, projectWithVideo } from './helpers/video.mjs';
-import { checkHudFrameSize, EXPORT_STAGE_ORDER, StageError } from '../cli/validate-pipeline.mjs';
+import { checkHudFrameSize, EXPORT_STAGE_ORDER, StageError, staleProbedDuration } from '../cli/validate-pipeline.mjs';
 import { verifyFontResources } from '../cli/adapter.mjs';
 import { resolvePreset } from '../shared/presets.js';
 
@@ -268,3 +268,69 @@ test('--dry-run 不启动 FFmpeg，也不写出成片', () => {
     '--dry-run 不应产生成片文件',
   );
 });
+
+// ffmpeg 用 0:1 表示「未标注」；报告里不能印成「零比一」，要写清实际按什么处理。
+test('--dry-run 把未标注的 SAR / DAR 写成「未标注（按…处理）」，不印 0:1', () => {
+  const videoPath = makeVideo({
+    key: 'portrait-unspecified-sar',
+    width: 1080,
+    height: 1920,
+    sar: '0',
+  });
+  const file = projectWithVideo(videoPath);
+
+  const { code, stdout, stderr } = runCli([
+    '--project', file,
+    '--preset', 'douyin-portrait',
+    '--dry-run',
+  ]);
+
+  assert.equal(code, 0, stderr);
+  assert.match(stdout, /SAR 未标注（按 1:1 处理）/);
+  assert.match(stdout, /DAR 未标注（按画面宽高处理）/);
+  assert.doesNotMatch(stdout, /SAR 0:1/);
+  assert.doesNotMatch(stdout, /DAR 0:1/);
+  // 行为不变：仍然是按方形像素处理，校验照样通过。
+  assert.match(stdout, /帧循环完成：30 帧/);
+});
+
+// sourceVideo.probed 只是记录，不参与校验；但记录值过期到超过 1 s 就要提示，并给出刷新命令。
+test('probed.durationSec 与实测差 ≤1 s 不提示，>1 s 报一条不阻断的过期提示', () => {
+  const video = { durationSec: 12 };
+
+  assert.equal(staleProbedDuration({ sourceVideo: { probed: { durationSec: 12.4 } } }, video, '/x.mp4'), null);
+  assert.equal(staleProbedDuration({ sourceVideo: {} }, video, '/x.mp4'), null);
+  assert.equal(staleProbedDuration({}, video, '/x.mp4'), null);
+
+  const warning = staleProbedDuration({ sourceVideo: { probed: { durationSec: 80 } } }, video, '/x.mp4');
+  assert.match(warning, /sourceVideo\.probed\.durationSec 记录值 80 s/);
+  assert.match(warning, /ffprobe 实测 12\.000 s/);
+  assert.match(warning, /相差 68 s/);
+  assert.match(warning, /本次按实测时长出片/);
+  assert.match(warning, /ffprobe -v error -print_format json -show_streams -show_format "\/x\.mp4"/);
+  assert.match(warning, /写回 project\.json/);
+});
+
+test('--dry-run 遇到过期的 probed.durationSec 仍成功出帧，只在 stderr 提示', () => {
+  const file = projectWithVideo(
+    makeVideo({ key: 'probed-stale', width: 1080, height: 1920 }),
+    (project) => {
+      project.sourceVideo.probed = {
+        width: 1080, height: 1920, sar: '1:1', dar: '9:16', rotation: 0, durationSec: 80,
+      };
+    },
+  );
+
+  const { code, stdout, stderr } = runCli([
+    '--project', file,
+    '--preset', 'douyin-portrait',
+    '--dry-run',
+  ]);
+
+  assert.equal(code, 0, stderr);
+  assert.match(stdout, /帧循环完成：30 帧/);
+  assert.match(stderr, /提示：sourceVideo\.probed\.durationSec 记录值 80 s/);
+  assert.match(stderr, /相差 79 s/);
+  assert.match(stderr, /ffprobe -v error -print_format json/);
+});
+

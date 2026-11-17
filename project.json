@@ -58,14 +58,14 @@
     ]
   },
   "sourceVideo": {
-    "path": "./assets/run.mp4",
+    "path": "./assets/run-portrait.mp4",
     "probed": {
       "width": 1080,
       "height": 1920,
       "sar": "1:1",
       "dar": "9:16",
       "rotation": 0,
-      "durationSec": 80
+      "durationSec": 12
     }
   },
   "tcx": {
@@ -78,11 +78,17 @@
   "alignmentOffsetMs": 0,
   "weatherSnapshot": {
     "source": "open-meteo-historical-archive",
+    "requestUrl": "https://archive-api.open-meteo.com/v1/archive?latitude=22.99092&longitude=115.32902&start_date=2026-11-15&end_date=2026-11-15&hourly=temperature_2m,relative_humidity_2m,precipitation,weather_code&timezone=Asia%2FShanghai",
     "query": {
       "latitude": 22.99092,
       "longitude": 115.32902,
       "timeLocal": "2026-11-15T19:00"
     },
+    "grid": {
+      "latitude": 22.952547,
+      "longitude": 115.36534
+    },
+    "fetchedAt": "2026-11-17T02:47:07.757Z",
     "values": {
       "temperatureC": 22,
       "humidityPct": 89,
@@ -91,7 +97,7 @@
     }
   },
   "output": {
-    "path": "./out/final.mp4",
+    "path": "./out/douyin-portrait.mp4",
     "fps": 30,
     "codec": "libx264",
     "pixFmt": "yuv420p"

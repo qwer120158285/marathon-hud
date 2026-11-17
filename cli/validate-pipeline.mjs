@@ -43,6 +43,14 @@ export const STAGE_LABELS = Object.freeze({
   'ffmpeg-start': '启动 FFmpeg',
 });
 
+/**
+ * `sourceVideo.probed.durationSec` 与 ffprobe 实测时长的容忍差（秒）。
+ *
+ * 超过这个差就提示「记录值过期」：素材替换是合法操作（工具不要求 probed 精确），
+ * 但配置里留着 80 s 而实际只有 12 s 会让报告与预期脱节，需要一条不阻断的警告。
+ */
+export const PROBED_DURATION_TOLERANCE_SEC = 1;
+
 /** 某一校验环节失败：`stageId` 定位环节，`exitCode` 供 CLI 直接使用。 */
 export class StageError extends Error {
   /**
@@ -79,6 +87,33 @@ export function checkHudFrameSize({ preset, createFrameCanvas = createCanvas }) 
 }
 
 /**
+ * `sourceVideo.probed.durationSec` 是否过期：与 ffprobe 实测时长相差超过 1 s 时报一条提示。
+ *
+ * 不阻断导出：素材替换是合法操作，实测时长才是出片依据（帧数 = round(实测时长 × fps)）。
+ * 提示里给出可照抄的探测命令，让人能把记录值刷新回 project.json。
+ *
+ * @param {{ sourceVideo?: { probed?: { durationSec?: number } } }} project
+ * @param {{ durationSec: number }} video
+ * @param {string} videoPath 已解析的源视频绝对路径，写进刷新命令
+ * @returns {string|null} 提示文本；记录值缺失或差值在容忍范围内时返回 null
+ */
+export function staleProbedDuration(project, video, videoPath) {
+  const recorded = project?.sourceVideo?.probed?.durationSec;
+  if (typeof recorded !== 'number' || !Number.isFinite(recorded) || recorded < 0) return null;
+
+  const delta = Math.abs(recorded - video.durationSec);
+  if (delta <= PROBED_DURATION_TOLERANCE_SEC) return null;
+
+  const format = (value) => (Number.isInteger(value) ? String(value) : value.toFixed(3));
+  return `sourceVideo.probed.durationSec 记录值 ${format(recorded)} s 与 ffprobe 实测 `
+    + `${video.durationSec.toFixed(3)} s 相差 ${format(delta)} s`
+    + `（超过 ${PROBED_DURATION_TOLERANCE_SEC} s）：记录值已过期，本次按实测时长出片。`
+    + '刷新方式：重跑探测 '
+    + `ffprobe -v error -print_format json -show_streams -show_format "${videoPath}" ，`
+    + '把结果里的 durationSec 写回 project.json 的 sourceVideo.probed';
+}
+
+/**
  * 跑完导出前的 5 个校验环节。
  *
  * 失败即抛出 `StageError`（含环节标识与退出码）；多目标预设未指定 `--preset`
@@ -89,7 +124,7 @@ export function checkHudFrameSize({ preset, createFrameCanvas = createCanvas }) 
  *   createFrameCanvas?: Function, probe?: Function,
  * }} options
  * @returns {Promise<{ preset: object, presets: object[], presetIds: string[],
- *                     videoPath: string, video: object }>}
+ *                     videoPath: string, video: object, warnings: string[] }>}
  */
 export async function runExportValidation({
   project,
@@ -149,8 +184,13 @@ export async function runExportValidation({
     throw new StageError('ffprobe', issues);
   }
 
+  // 5b. 记录值新鲜度：只提示不阻断（素材替换合法，实测时长才是出片依据）。
+  const warnings = [];
+  const staleDuration = staleProbedDuration(project, video, videoPath);
+  if (staleDuration !== null) warnings.push(staleDuration);
+
   // 6. HUD 帧尺寸：必须在启动 FFmpeg（以及任何编码前工作）之前确认。
   checkHudFrameSize({ preset, createFrameCanvas });
 
-  return { preset, presets, presetIds, videoPath, video };
+  return { preset, presets, presetIds, videoPath, video, warnings };
 }

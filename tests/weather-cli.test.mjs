@@ -131,7 +131,7 @@ test('成功路径：按活动开始时刻与首个有效 GPS 取一次小时值
     const result = await runWeatherCliAsync(['--project', projectPath, '--endpoint', archive.endpoint]);
     assert.equal(result.code, 0, result.stderr);
     assert.match(result.stdout, /已写入天气快照/);
-    assert.match(result.stdout, /毛毛雨/);
+    assert.match(result.stdout, /DRIZZLE/);
 
     const saved = JSON.parse(readFileSync(projectPath, 'utf8'));
     const snapshot = saved.weatherSnapshot;

@@ -51,9 +51,30 @@
 - 18 个重复时间戳、1 处 7 s 间隔；插值前需去重。
 - 天气实测：Open-Meteo archive + `timezone=Asia/Shanghai`，11/15 19:00 为 22.0 °C / 89% / 0.1 mm / WMO 51；ERA5 网格吸附到 22.9525 / 115.3653（距 GPS 点约 4 km），是再分析估计值而非站点实测。
 - 环境：FFmpeg 4.4.1-tessus（支持 rawvideo rgba、overlay、libx264/libx265）、Node 22.22.2 x86_64、`@napi-rs/canvas` 0.1.100 预编译二进制、Chrome 150。
-- 既有 `marathon-hud-demo` 的 `render.js` 已验证透明 RGBA + overlay + `drain` 背压，`csv.js` 已验证二分查找 + 线性插值；但其 `activity.csv` 是演示假数据，TCX 未接入、`hud.js` 坐标硬编码。
+- 既有 `marathon-hud-demo`（迁移完成后归档到 `archive/marathon-hud-demo/`）的 `render.js` 已验证透明 RGBA + overlay + `drain` 背压，`csv.js` 已验证二分查找 + 线性插值；但其 `activity.csv` 是演示假数据，TCX 未接入、`hud.js` 坐标硬编码。
 
 ## 已冻结与拟定
 
 - **已冻结**：Q1–Q19 全部决策、ADR 0001–0006 的内容、`GLOSSARY.md` 的领域语言。
 - **拟定（依已确认决策推导，不推翻任何原则）**：`SPEC-v1.md` 中的目录命名、CLI 参数与退出码、JSON Schema 的具体字段细节、Golden Image 基准图生成脚本，以及把 Q14 的布尔开关合并进 `layout.components[].visible` 的实现口径。这些属于实现参数，调整时不得与 ADR 冲突。
+
+## 实现参数补充（2026-11-17 首版收口）
+
+只记录「依已冻结决策推导出来的实现细节」，不改任何 ADR 原则：
+
+- **CLI 参数**：`--at-frame <n>`（打印第 n 帧的运动指标，核对数据源用）、`--out <path>`（覆盖
+  `output.path`）、`--validate-only`、`--dry-run`。退出码 0 / 2 / 3 / 4 见 `SPEC-v1.md` 第 4 节。
+- **两个项目实例**：`project.json`（抖音竖屏）与 `project.landscape.json`（B 站横屏）。源视频画幅不同，
+  工具不做 scale / crop（ADR 0003），因此一行一个画幅。两份配置引用同一条 TCX 与同一份天气快照。
+- **天气短语用英文**：`CLEAR` / `PARTLY CLOUDY` / `OVERCAST` / `FOG` / `DRIZZLE` / `RAIN` / `SNOW` /
+  `SHOWERS` / `THUNDER` 等；未知 WMO 码显示 `WX <code>`。原因：Inter 没有汉字字形，中文短语会落到
+  本机系统字体，换机器时字宽变化（实测「晴」40 px 下 40.00 → 34.60），基准图跨机器不可复现（ADR 0001）。
+- **`sourceVideo.probed.durationSec`**：只是探测记录，不参与规格校验；与 ffprobe 实测时长相差 >1 s 时
+  在导出前校验里给一条不阻断的提示，并给出重跑探测的命令（素材替换是合法操作）。
+- **未标注的 SAR / DAR**：ffprobe 的 `0:1` 在报告里写成「未标注（按 1:1 处理）」/「未标注（按画面宽高处理）」，
+  校验行为不变（仍按方形像素处理）。
+- **验收命令**：`npm test`（单元 + 进程边界 + 端到端）、`npm run accept:video`（两段成片 ffprobe 断言
+  与 HUD 位置）、`npm run accept:golden`（两预设 × Node/浏览器两端基准图）。逐条结果见
+  `docs/ACCEPTANCE-v1.md`。
+- **既有 demo**：`marathon-hud-demo/` 已 `git mv` 到 `archive/marathon-hud-demo/`，只作历史参考，
+  不参与构建与测试（原因见 `archive/README.md`）。

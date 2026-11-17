@@ -52,6 +52,27 @@ function formatNumber(value) {
   return Number.isInteger(value) ? String(value) : String(Math.round(value * 1000) / 1000);
 }
 
+/**
+ * 比例字段 → 报告文本。
+ *
+ * ffmpeg 用 `0:1` 表示「未标注」（见 cli/ffprobe.mjs 的 parseRatio），直接印出来会被读成
+ * 「零比一」。未标注时写清楚实际按什么处理，避免看报告的人以为校验被跳过。
+ *
+ * @param {string} value ffprobe 的 sar / dar
+ * @param {string} fallback 未标注时的处理口径，例如「按 1:1」
+ */
+function formatRatio(value, fallback) {
+  return value === '0:1' || value === 'N/A' ? `未标注（${fallback}）` : value;
+}
+
+/** 源视频规格一行：宽高、SAR、DAR、旋转、时长；报告与 `--dry-run` 共用。 */
+function formatVideoSpec(video) {
+  return `视频规格      ${video.width}×${video.height}，`
+    + `SAR ${formatRatio(video.sar, '按 1:1 处理')}，`
+    + `DAR ${formatRatio(video.dar, '按画面宽高处理')}，`
+    + `旋转 ${video.rotation}°，时长 ${video.durationSec.toFixed(3)} s`;
+}
+
 /** 单个画布预设一段报告：画布尺寸、安全边距、格边长、网格规模、可放置格位范围。 */
 function formatPresetReport(preset) {
   const { placeable, grid } = preset;
@@ -85,8 +106,7 @@ function formatDryRunReport({ projectPath, preset, videoPath, video, fps, alignm
     title,
     `  画布尺寸      ${preset.width} × ${preset.height}`,
     `  源视频        ${videoPath}`,
-    `  视频规格      ${video.width}×${video.height}，SAR ${video.sar}，DAR ${video.dar}，`
-      + `旋转 ${video.rotation}°，时长 ${video.durationSec.toFixed(3)} s`,
+    `  ${formatVideoSpec(video)}`,
     `  帧率          ${formatNumber(fps)} fps（固定），对齐偏移 ${formatNumber(alignmentOffsetMs)} ms`,
     '',
     `帧循环完成：${stats.frames} 帧`,
@@ -110,8 +130,7 @@ function formatRenderReport({
     title,
     `  画布尺寸      ${preset.width} × ${preset.height}`,
     `  源视频        ${videoPath}`,
-    `  视频规格      ${video.width}×${video.height}，SAR ${video.sar}，DAR ${video.dar}，`
-      + `旋转 ${video.rotation}°，时长 ${video.durationSec.toFixed(3)} s`,
+    `  ${formatVideoSpec(video)}`,
     `  帧率          ${formatNumber(fps)} fps（固定），对齐偏移 ${formatNumber(alignmentOffsetMs)} ms`,
     '',
     `成片  ${outputPath}`,
@@ -172,6 +191,11 @@ async function prepareExport({ args, loaded }) {
 
   const fps = project.output?.fps ?? 30;
   const alignmentOffsetMs = project.alignmentOffsetMs ?? 0;
+  // 提示不阻断导出：记录值过期、素材替换这类情况照常出片，只是把话说清楚。
+  for (const warning of validation.warnings ?? []) {
+    process.stderr.write(`提示：${warning}\n`);
+  }
+
   const totalFrames = Math.round(validation.video.durationSec * fps);
   if (totalFrames <= 0) {
     process.stderr.write(

@@ -1,7 +1,7 @@
 /**
  * FFmpeg 参数拼装（ADR 0003「工具不负责 scale / crop / pad」、SPEC-v1 第 5 节）。
  *
- * 期望值来源：`marathon-hud-demo/src/render.js` 里已在真机验证过的参数形状
+ * 期望值来源：`archive/marathon-hud-demo/src/render.js` 里已在真机验证过的参数形状
  * （双输入 + overlay 0:0 + `-map 0:a?` + H.264 / yuv420p / faststart），
  * 以及本机 `ffmpeg -h` 的选项名（rawvideo 解复用器的 `-pixel_format`）。
  */

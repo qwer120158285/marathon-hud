@@ -10,14 +10,13 @@
 export const FONT_FAMILY = 'Inter';
 
 /**
- * CJK 短语用的字体：Inter 没有汉字字形，仓库只 vendoring 了 Inter（CJK 字体体积大且许可受限）。
+ * 只使用随项目打包的 Inter（ADR 0001「字体」）：模块内不允许出现任何系统字体名。
  *
- * 为什么不用 `Inter, "PingFang SC"` 这种回退栈：`@napi-rs/canvas` 的字体解析只认一个家族名，
- * 传了列表会把整串文字都落到列表末尾的字体上（实测 40 px 下数字宽度从 25.2 变 24.0），
- * 数字就不再是 Inter，两端还会各走一套字形。所以只在纯中文短语上单独指定系统字体。
- * 代价：CJK 字形依赖本机字体，换机器需重跑基准图标定（与 ADR 0001 的跨光栅器口径一致）。
+ * 曾经为中文天气短语单独指定过 macOS 系统字体；那会让「换机器」改变字宽
+ * （实测缺字体时「晴」40.00 → 34.60 px），基准图跨机器不可复现。
+ * 天气短语因此改用英文（见 shared/weather.js），全部分支只走 Inter。
+ * `tests/fonts.test.mjs` 会扫描 shared/ 源码，出现系统字体名即失败。
  */
-export const CJK_FONT_FAMILY = 'PingFang SC';
 
 export const COLORS = {
   /** 数据卡底板：深色半透明，保证压在任意画面上都有足够对比。 */

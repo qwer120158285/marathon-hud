@@ -41,7 +41,7 @@ function stderrExcerpt(stderr) {
 /**
  * 拼装 FFmpeg 参数。
  *
- * 滤镜链与 marathon-hud-demo 已验证的形状一致：
+ * 滤镜链与 archive/marathon-hud-demo 已验证的形状一致：
  * `[0:v]fps=fps,setpts=PTS-STARTPTS[base];[1:v]setpts=PTS-STARTPTS,format=rgba[ov];[base][ov]overlay=0:0:format=auto:shortest=1[v]`
  *
  * - `fps` 滤镜把源视频锁到与 HUD 相同的恒定帧率（时间轴同步的硬要求）；
