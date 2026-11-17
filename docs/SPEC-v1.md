@@ -156,11 +156,11 @@ node cli/render.mjs --project <path/to/project.json> [options]
 1. 按 Schema 校验 `project.json`，检查 `version` 与 `gridVersion`；`components[]` 的 `id` 不重复。
 2. **联合校验**：对 `targetPresets[]` 全部预设，用同一份候选布局与同一版本预设配置，检查格位有效、尺寸有效、锚点映射有效、组件完整矩形未越过安全区；重叠只作提示。
 3. 资源检查：字体文件存在、SHA-256 匹配、两端注册完成。
-4. `ffprobe` 读取 width / height / SAR / DAR / 旋转元数据，与目标画布比对，不一致拒绝并报告实际值 / 期望值。
+4. `ffprobe` 读取 width / height / SAR / DAR / 旋转元数据，与画布预设比对，不一致拒绝并报告实际值 / 期望值。
    SAR / DAR 为「未标注」（ffprobe 的 `0:1`）时按 1:1 / 画面宽高处理，报告里写明这一点。
 5. `sourceVideo.probed.durationSec` 与实测时长相差 >1 s 时给一条不阻断的提示（记录值过期），
    并给出重跑探测的命令；出片始终以实测时长为准。
-6. 确认 HUD 帧尺寸等于目标画布。
+6. 确认 HUD 帧尺寸等于画布预设。
 7. 启动 FFmpeg，进入帧循环。
 
 ## 5. 帧循环、时间轴与背压

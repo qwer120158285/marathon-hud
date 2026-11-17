@@ -14,6 +14,8 @@ import {
   EXIT_CONFIG_ERROR,
   EXIT_DATA_MISSING,
   EXIT_SUCCESS,
+  UsageError,
+  WEATHER_VALUE_FLAGS,
 } from './args.mjs';
 import { loadProject, saveProject, ProjectConfigError } from './project.mjs';
 import { DataSourceError, loadDataSource } from './data.mjs';
@@ -24,6 +26,7 @@ import {
   firstValidPosition,
 } from '../data/weather.mjs';
 import { DEFAULT_TIMEZONE, describeWeatherCode } from '../shared/weather.js';
+import { formatNumber } from '../shared/format.js';
 
 const USAGE = `用法：node cli/weather.mjs --project <path/to/project.json> [options]
 
@@ -37,7 +40,10 @@ const USAGE = `用法：node cli/weather.mjs --project <path/to/project.json> [o
 
 退出码：0 成功；2 配置 / 校验 / 取数失败；4 数据源缺失。`;
 
-/** 极简参数解析：本命令只有两个取值参数，不引入 cli/args.mjs 的渲染参数表。 */
+/**
+ * 极简参数解析：参数名常量与错误类型共用 cli/args.mjs，取值循环按本命令的两个参数展开
+ * （渲染入口还有 --at-frame 的整数转换，不适合硬套同一张表）。
+ */
 function parseWeatherArgs(argv) {
   const args = { help: false };
 
@@ -47,23 +53,19 @@ function parseWeatherArgs(argv) {
       args.help = true;
       continue;
     }
-    if (token !== '--project' && token !== '--endpoint') {
-      throw new WeatherFetchError(`未知参数 "${token}"；可用参数见 --help`);
+    const key = WEATHER_VALUE_FLAGS[token];
+    if (key === undefined) {
+      throw new UsageError(`未知参数 "${token}"；可用参数见 --help`);
     }
     const value = argv[i + 1];
     if (value === undefined || value.startsWith('--')) {
-      throw new WeatherFetchError(`${token} 需要一个取值，例如 ${token} <path>`);
+      throw new UsageError(`${token} 需要一个取值，例如 ${token} <path>`);
     }
-    args[token === '--project' ? 'project' : 'endpoint'] = value;
+    args[key] = value;
     i += 1;
   }
 
   return args;
-}
-
-/** 整数不带小数点，小数最多三位；报告里只做展示，不参与逻辑。 */
-function formatNumber(value) {
-  return Number.isInteger(value) ? String(value) : String(Math.round(value * 1000) / 1000);
 }
 
 /** 写入结果报告：每个字段都能对回快照，方便手改与复核。 */
@@ -181,4 +183,13 @@ async function main(argv) {
   return EXIT_SUCCESS;
 }
 
-process.exitCode = await main(process.argv.slice(2));
+let exitCode;
+try {
+  exitCode = await main(process.argv.slice(2));
+} catch (error) {
+  // 与 cli/render.mjs 相同的边界口径：未分类异常按配置 / 取数失败退出 2，
+  // 数据源缺失仍退出 4，只打印中文原因，不把栈回溯交给使用者。
+  process.stderr.write(`错误：${error instanceof Error ? error.message : String(error)}\n`);
+  exitCode = error instanceof DataSourceError ? EXIT_DATA_MISSING : EXIT_CONFIG_ERROR;
+}
+process.exitCode = exitCode;

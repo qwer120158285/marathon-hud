@@ -25,6 +25,7 @@ import { createCanvas, loadImage } from '@napi-rs/canvas';
 
 import { resolveComponentRect } from '../shared/layout.js';
 import { resolvePreset } from '../shared/presets.js';
+import { ASSET_HINT } from '../scripts/prepare-assets.mjs';
 
 export const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const CLI_PATH = path.join(REPO_ROOT, 'cli/render.mjs');
@@ -158,10 +159,7 @@ function ensureRendered(entry, { check }) {
   if (existsSync(outputPath)) return { outputPath, projectPath, sourcePath };
   if (check) throw new AcceptanceError(`成片不存在：${entry.out}（去掉 --check 可先出片）`);
   if (!existsSync(sourcePath)) {
-    throw new AcceptanceError(
-      `源视频不存在：${entry.source}\n`
-        + '真实素材被 .gitignore 忽略，需要本机自备 1080×1920 / 1920×1080、30 fps、12 s 的素材',
-    );
+    throw new AcceptanceError(`源视频不存在：${entry.source}\n${ASSET_HINT}`);
   }
 
   mkdirSync(path.dirname(outputPath), { recursive: true });

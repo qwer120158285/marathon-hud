@@ -10,7 +10,8 @@
  */
 import { BUILTIN_PRESETS, BUILTIN_PRESET_IDS, resolvePreset } from '../shared/presets.js';
 import { drawFrame, prepareStatic } from '../shared/hud.js';
-import { resolveComponentRect, safeAreaOverflow } from '../shared/layout.js';
+import { describeOverflow, resolveComponentRect, safeAreaOverflow } from '../shared/layout.js';
+import { formatNumber } from '../shared/format.js';
 import { createCanvas, registerFonts } from './preview.js';
 import {
   changeLayer,
@@ -33,7 +34,6 @@ const COMPONENT_LABELS = {
   weather: '天气',
 };
 
-const EDGE_LABELS = { left: '左边', right: '右边', top: '上边', bottom: '下边' };
 
 /** 编辑辅助线颜色（不进入预览像素）。 */
 const GRID_COLOR = 'rgba(255, 255, 255, 0.11)';
@@ -467,16 +467,6 @@ function renderReadout() {
   }
 
   ui.readout.textContent = lines.join('\n');
-}
-
-function describeOverflow(overflow) {
-  return overflow
-    .map(({ edge, px, cells }) => `${EDGE_LABELS[edge]}越界 ${formatNumber(px)} px（${formatNumber(cells)} 格）`)
-    .join('，');
-}
-
-function formatNumber(value) {
-  return Number.isInteger(value) ? String(value) : String(Math.round(value * 1000) / 1000);
 }
 
 // ---------------------------------------------------------------------------

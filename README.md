@@ -59,9 +59,11 @@ npm install     # 只装一个运行时依赖 @napi-rs/canvas
 
 - **TCX**：仓库自带 `activity_662602587.tcx`（真实样本）。
 - **源视频**：`assets/run-portrait.mp4`（1080×1920、30 fps、12 s）与 `assets/run-landscape.mp4`
-  （1920×1080、30 fps、12 s）。`*.mp4` 被 `.gitignore` 忽略，需要本机自备。
+  （1920×1080、30 fps、12 s）。`*.mp4` 被 `.gitignore` 忽略，需要本机自备；也可以用
+  `npm run assets:prepare` 从本机素材各取 12 s 并按画布预设缩放裁齐（默认源与等价 ffmpeg
+  命令见 `node scripts/prepare-assets.mjs --help` 与 `docs/ACCEPTANCE-v1.md` 第 8 条）。
 
-**为什么有两个 project 文件**：工具不做 scale / crop / pad（ADR 0003），源视频画幅必须与目标画布一致。
+**为什么有两个 project 文件**：工具不做 scale / crop / pad（ADR 0003），源视频画幅必须与画布预设一致。
 竖屏素材配 `project.json`（`targetPresets` 同时列出两个预设，用同一份布局跑联合校验），
 横屏素材配 `project.landscape.json`（布局按横屏安全区摆放）。两份配置引用同一条 TCX 与同一份天气快照
 （快照由 `npm run weather -- --project project.json` 真实取数后写入；同一活动、同一坐标，取数结果相同）。
@@ -90,6 +92,7 @@ node cli/render.mjs --project project.json --validate-only
 
 打印每个目标预设的画布尺寸、安全边距、格边长、网格规模、可放置格位，联合校验结论，
 以及 TCX 的采样点 / Lap / 距离 / 时长 / 可用指标。不读视频、不启动 FFmpeg。
+本命令**总是校验全部目标预设**；`--preset` 只影响出片，不缩小校验范围。
 
 ### 3. 试跑（不出片）
 

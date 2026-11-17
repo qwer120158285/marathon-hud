@@ -243,7 +243,7 @@ test('对齐偏移参与运动时刻换算', async () => {
   assert.notEqual(Buffer.compare(atZero, atOneSecond), 0);
 });
 
-// 防御性检查：渲染画布尺寸必须等于目标画布预设（ADR 0003「HUD 帧与目标画布不一致 → 拒绝导出」）。
+// 防御性检查：渲染画布尺寸必须等于画布预设（ADR 0003「HUD 帧与画布预设不一致 → 拒绝导出」）。
 test('画布尺寸与预设不一致时抛 FrameSizeError，且不写入任何字节', async () => {
   let writes = 0;
   const badFactory = () => createCanvas({ width: 50, height: 50 });
@@ -261,6 +261,36 @@ test('画布尺寸与预设不一致时抛 FrameSizeError，且不写入任何�
     (error) => {
       assert.ok(error instanceof FrameSizeError);
       assert.match(error.message, /HUD 帧尺寸 50×50，期望 108×192（画布预设 tiny）/);
+      return true;
+    },
+  );
+  assert.equal(writes, 0);
+});
+
+// 每帧的字节数必须与画布预设的 W×H×4 严格相等；不等就说明画布被换了尺寸或像素格式变了，
+// 静默写进管道会让 FFmpeg 收到错位的帧。
+test('单帧字节数与 W×H×4 不符时抛 FrameSizeError，且不把坏帧交给 sink', async () => {
+  const { ctx } = createCanvas({ width: TINY.width, height: TINY.height });
+  const badCanvas = {
+    width: TINY.width,
+    height: TINY.height,
+    data: () => new Uint8ClampedArray(8),
+  };
+  let writes = 0;
+
+  await assert.rejects(
+    runFrameLoop({
+      motion: FLAT_MOTION,
+      preset: TINY,
+      fps: 30,
+      totalFrames: 3,
+      static: emptyStaticLayer(TINY),
+      sink: { write() { writes += 1; return true; } },
+      createFrameCanvas: () => ({ canvas: badCanvas, ctx }),
+    }),
+    (error) => {
+      assert.ok(error instanceof FrameSizeError);
+      assert.match(error.message, /HUD 帧字节数 8，期望 82944（108×192×4，画布预设 tiny）/);
       return true;
     },
   );

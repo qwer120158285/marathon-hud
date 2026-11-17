@@ -8,12 +8,14 @@
  *
  * 所有路径都限定在 `root` 内：`..` 与绝对路径一律拒绝，防止目录穿越读取仓库外文件。
  */
-import { createReadStream, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { loadSchema, validateProject } from '../cli/project.mjs';
+import { loadSchema, saveProject, validateProject } from '../cli/project.mjs';
+import { jointValidate } from '../shared/layout.js';
+import { resolvePreset } from '../shared/presets.js';
 
 /** 仓库根目录（文档根）。 */
 export const REPO_ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -168,7 +170,14 @@ function handleGetProject(root, requested, response) {
   sendJson(response, 200, { ok: true, path: resolved.relativePath, project });
 }
 
-/** `/api/project` 的 PUT：先过 Schema 契约，再落盘。 */
+/**
+ * `/api/project` 的 PUT：先过 Schema，再用同一份候选布局跑**全部目标预设**的联合校验，最后原子落盘。
+ *
+ * 母票要求「保存布局时系统自动检查所有目标画幅，只要有一个越界就拒绝保存」，
+ * 因此这里不能只过 Schema；错误列表的形状与 Schema 失败一致（`errors: string[]`），
+ * 编辑器侧不需要两套展示逻辑。落盘复用 `cli/project.mjs` 的 `saveProject`（临时文件 + rename），
+ * 不在 HTTP 层写第二套覆盖式写入。
+ */
 async function handlePutProject(root, requested, request, response) {
   const resolved = resolveProjectPath(root, requested);
   if (!resolved.ok) {
@@ -198,8 +207,20 @@ async function handlePutProject(root, requested, request, response) {
     return;
   }
 
+  // Schema 已保证 targetPresets 非空且都是已知预设，这里直接解析成同一版本快照。
+  const targetPresets = project.targetPresets;
+  const joint = jointValidate({
+    layout: project.layout,
+    targetPresets,
+    presets: targetPresets.map((id) => resolvePreset(id)),
+  });
+  if (!joint.ok) {
+    sendErrors(response, 422, resolved.relativePath, joint.errors.map((error) => error.message));
+    return;
+  }
+
   try {
-    writeFileSync(resolved.absolutePath, `${JSON.stringify(project, null, 2)}\n`, 'utf8');
+    saveProject(resolved.absolutePath, project);
   } catch (error) {
     sendErrors(response, 500, resolved.relativePath, [`写入失败：${error.message}`]);
     return;

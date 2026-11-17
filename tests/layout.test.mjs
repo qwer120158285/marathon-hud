@@ -2,7 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { resolvePreset, resolveCanvasPreset } from '../shared/presets.js';
-import { resolveComponentRect, snapRectToGrid, safeAreaOverflow } from '../shared/layout.js';
+import {
+  EDGE_LABELS,
+  describeOverflow,
+  duplicateComponentIdErrors,
+  isBottomAnchor,
+  isRightAnchor,
+  resolveComponentRect,
+  safeAreaOverflow,
+  snapRectToGrid,
+} from '../shared/layout.js';
 
 // 期望值来源：ADR 0002「基准格边长 40 px @ 短边 1080」与 ADR 0003 抖音安全边距 64 / 160 / 240。
 // 抖音 1080×1920 格边长 40 px：col 2 → x = 2×40 = 80；row 4 → y = 4×40 = 160。
@@ -157,4 +166,48 @@ test('起始行合法但跨行后越过底部安全边距时判定失败', () =>
     ),
     [{ edge: 'bottom', px: 40, cells: 1 }],
   );
+});
+
+// 锚点方位判断只有一份实现：shared/hud.js 与 shared/layout.js 都用它决定行从哪边起算。
+test('isBottomAnchor / isRightAnchor 对四角锚点给出确定答案', () => {
+  assert.equal(isBottomAnchor('bottom-left'), true);
+  assert.equal(isBottomAnchor('bottom-right'), true);
+  assert.equal(isBottomAnchor('top-left'), false);
+  assert.equal(isBottomAnchor('top-right'), false);
+
+  assert.equal(isRightAnchor('top-right'), true);
+  assert.equal(isRightAnchor('bottom-right'), true);
+  assert.equal(isRightAnchor('top-left'), false);
+  assert.equal(isRightAnchor('bottom-left'), false);
+});
+
+// 越界文案只有一份实现：编辑器读数与联合校验报告必须逐字一致。
+test('describeOverflow 与 EDGE_LABELS 由 shared/layout.js 导出，文案与联合校验一致', () => {
+  assert.deepEqual(EDGE_LABELS, { left: '左边', right: '右边', top: '上边', bottom: '下边' });
+  assert.equal(
+    describeOverflow([{ edge: 'bottom', px: 200, cells: 5 }]),
+    '下边越界 200 px（5 格）',
+  );
+  assert.equal(
+    describeOverflow([{ edge: 'left', px: 64, cells: 1.6 }, { edge: 'right', px: 1.2345, cells: 0.0308625 }]),
+    '左边越界 64 px（1.6 格），右边越界 1.235 px（0.031 格）',
+  );
+});
+
+// 组件 id 唯一性在布局层独立成立；CLI 的语义校验复用同一份实现与文案。
+test('duplicateComponentIdErrors 指出重复的两处下标与 id', () => {
+  assert.deepEqual(
+    duplicateComponentIdErrors([
+      { id: 'route' },
+      { id: 'metrics' },
+      { id: 'route' },
+    ]),
+    [{
+      index: 2,
+      firstIndex: 0,
+      componentId: 'route',
+      message: 'layout.components[2].id 与 layout.components[0].id 重复（"route"）',
+    }],
+  );
+  assert.deepEqual(duplicateComponentIdErrors([{ id: 'route' }, { id: 'metrics' }]), []);
 });

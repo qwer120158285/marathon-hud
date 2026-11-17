@@ -6,6 +6,7 @@ import path from 'node:path';
 
 import { readTcx } from '../data/tcx.mjs';
 import { buildMotion } from '../data/interpolate.mjs';
+import { formatNumber } from '../shared/format.js';
 
 /** 数据源缺失或不可解析统一用这个错误类型，由 CLI 入口转成退出码 4。 */
 export class DataSourceError extends Error {
@@ -51,11 +52,6 @@ export function loadDataSource(project, projectDir) {
     activity,
     motion: buildMotion(activity.samples, { kmMarkers: activity.kmMarkers }),
   };
-}
-
-/** 整数不带小数点，小数最多三位。 */
-function formatNumber(value) {
-  return Number.isInteger(value) ? String(value) : String(Math.round(value * 1000) / 1000);
 }
 
 /** 毫秒 → h:mm:ss。 */

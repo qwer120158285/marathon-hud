@@ -68,10 +68,11 @@ export class StageError extends Error {
 }
 
 /**
- * 「HUD 帧尺寸 == 目标画布预设」校验。
+ * 「HUD 帧尺寸 == 画布预设」的启动前检查。
  *
- * 正常路径必然一致（画布由预设尺寸创建），这是防御性检查：
- * 任何绕过预设的尺寸来源（注入的画布工厂、后续 ticket 的复用画布）都会在这里被拦下。
+ * 用适配层**实际返回**的画布尺寸与预设比对：正常路径必然一致，但注入的画布工厂、
+ * 后续 ticket 的复用画布等任何绕过预设的尺寸来源，都会在启动 FFmpeg 之前被拦下。
+ * 每帧的像素负载（`buffer.byteLength === width × height × 4`）由 `runFrameLoop` 逐帧断言。
  *
  * @param {{ preset: object, createFrameCanvas?: Function }} options
  */
@@ -138,6 +139,15 @@ export async function runExportValidation({
   const schemaErrors = validateProject(project, schema);
   if (schemaErrors.length > 0) {
     throw new StageError('schema', schemaErrors);
+  }
+
+  // Schema 把 sourceVideo 标为可选，但出片离不开源视频：缺字段时在这里给出能照着改的路径，
+  // 而不是让后面 `project.sourceVideo.path` 抛 TypeError（那会漏成退出码 1 和栈回溯）。
+  const sourcePath = project.sourceVideo?.path;
+  if (typeof sourcePath !== 'string' || sourcePath.trim() === '') {
+    throw new StageError('schema', [
+      'sourceVideo.path 缺失：请在 project.json 里指向源视频（相对路径，相对 project.json 所在目录）',
+    ]);
   }
 
   // 2. 本次出片预设：多目标预设必须用 --preset 选定。

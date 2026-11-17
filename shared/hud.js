@@ -5,11 +5,14 @@
  * 依据 ADR 0004：`shouldRender = configEnabled && dataAvailable`，缺值指标整行不绘制。
  *
  * 结构：
- * - `prepareStatic` 预绘一次静态层（底板、标签、单位、路线底图、进度轨道与刻度）到离屏位图，并返回绘制计划；
+ * - `prepareStatic` 预绘一次静态层（底板、标签、单位、完整路线、进度轨道与刻度）到离屏位图，并返回绘制计划；
  * - `drawFrame` 每帧只做一次 `drawImage` 合成 + 只画会变的部分（数值、路线高亮与箭头、进度填充）；
  * - `DRAWERS` 按组件 id 分派；weather 是纯静态覆盖（整场不变，`dynamic` 恒为空）。
  */
-import { resolveComponentRect } from './layout.js';
+import {
+  isBottomAnchor,
+  resolveComponentRect,
+} from './layout.js';
 import { COLORS, FONT_FAMILY, resolveTheme } from './theme.js';
 import {
   DEFAULT_TIMEZONE,
@@ -17,7 +20,7 @@ import {
   mergeWeatherValues,
   weatherPhrase,
 } from './weather.js';
-import { shouldRender } from '../data/availability.mjs';
+import { shouldRender } from './policy.js';
 
 /** 数字等宽检测：只有阿拉伯数字按固定步进，冒号 / 小数点仍用字形自身宽度。 */
 function isDigit(char) {
@@ -210,7 +213,7 @@ function planMetrics(ctx, { preset, component, metrics }) {
   // 卡片贴组件矩形的底边（bottom-* 锚点）或顶边（top-* 锚点），收缩方向跟随锚点。
   const panel = {
     x: rect.x,
-    y: component.anchor.startsWith('bottom') ? rect.y + rect.height - panelHeight : rect.y,
+    y: isBottomAnchor(component.anchor) ? rect.y + rect.height - panelHeight : rect.y,
     width: rect.width,
     height: panelHeight,
   };
@@ -435,7 +438,7 @@ function isMoving(paceSecPerKm) {
 /**
  * 路线组件：解析组件矩形与投影后的轨迹。
  *
- * 完整底图不随时刻变化（静态层预绘）；已完成段与箭头在 `drawFrame` 里按当前距离重画。
+ * 完整路线不随时刻变化（静态层预绘）；已完成段与箭头在 `drawFrame` 里按当前距离重画。
  * 数据可用性来自 `availability.gps`，配置来自 `visible`，两者都成立才进入计划。
  */
 function planRoute(ctx, { preset, component, metrics, activity }) {
@@ -481,7 +484,7 @@ function strokeRuns(ctx, runs) {
   ctx.stroke();
 }
 
-/** 静态层：完整路线底图（一次描边，不随时刻变化）。 */
+/** 静态层：完整路线（一次描边，不随时刻变化）。 */
 function drawRouteBase(ctx, route) {
   ctx.strokeStyle = route.baseColor;
   ctx.lineWidth = route.lineWidth;
@@ -550,7 +553,7 @@ function planProgress(ctx, { preset, component, metrics, activity }) {
 
   const panel = {
     x: rect.x,
-    y: component.anchor.startsWith('bottom') ? rect.y + rect.height - panelHeight : rect.y,
+    y: isBottomAnchor(component.anchor) ? rect.y + rect.height - panelHeight : rect.y,
     width: rect.width,
     height: panelHeight,
   };
@@ -763,7 +766,7 @@ function planWeather(ctx, { preset, component, activity, weatherSnapshot, timezo
 
   const panel = {
     x: rect.x,
-    y: component.anchor.startsWith('bottom') ? rect.y + rect.height - panelHeight : rect.y,
+    y: isBottomAnchor(component.anchor) ? rect.y + rect.height - panelHeight : rect.y,
     width: rect.width,
     height: panelHeight,
   };
@@ -875,7 +878,7 @@ function buildPlan(ctx, { preset, components, metrics, activity, weatherSnapshot
   return plan;
 }
 
-/** 静态层落笔：底板一次填充 + 一次描边，标签与单位各写一次，路线底图一次描边。 */
+/** 静态层落笔：底板一次填充 + 一次描边，标签与单位各写一次，完整路线一次描边。 */
 function drawStaticLayer(ctx, plan) {
   ctx.save();
   ctx.textAlign = 'left';
@@ -898,7 +901,7 @@ function drawStaticLayer(ctx, plan) {
       ctx.fillText(text.text, text.x, text.baseline);
     }
 
-    // 路线底图整场活动都不变，属于静态层；已完成段与箭头每帧重画。
+    // 完整路线整场活动都不变，属于静态层；已完成段与箭头每帧重画。
     if (item.route !== undefined) drawRouteBase(ctx, item.route);
     if (item.progress !== undefined) drawProgressStatic(ctx, item.progress);
   }
@@ -960,7 +963,7 @@ export function drawFrame(ctx, { preset, metrics, static: staticLayer }) {
       drawTabularText(ctx, value, entry.x, entry.baseline, entry.tabular);
     }
 
-    // 路线的已完成段与方向箭头随当前距离变化，每帧重画（底图已在静态层）。
+    // 路线的已完成段与方向箭头随当前距离变化，每帧重画（完整路线已在静态层）。
     if (item.route !== undefined) drawRouteProgress(ctx, item.route, metrics);
     if (item.progress !== undefined) drawProgressFrame(ctx, item.progress);
   }

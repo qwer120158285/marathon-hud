@@ -36,6 +36,17 @@ const BOOLEAN_FLAGS = new Map([
 ]);
 
 /**
+ * `cli/weather.mjs` 的取值参数名 → 解析结果字段。
+ *
+ * 天气入口只有两个取值参数，不值得硬套渲染入口的 `parseArgs`；但参数名与 `UsageError`
+ * 必须同源，避免两个入口对同一个拼写给出不同错误。
+ */
+export const WEATHER_VALUE_FLAGS = Object.freeze({
+  '--project': 'project',
+  '--endpoint': 'endpoint',
+});
+
+/**
  * 解析命令行参数。
  * @param {string[]} argv 不含 node 与脚本路径的参数数组
  * @returns {{ project?: string, preset?: string, out?: string, atFrame?: number,
@@ -81,7 +92,9 @@ export function parseArgs(argv) {
 /**
  * 决定本次要处理的画布预设。
  *
- * - `mode: 'validate'`（`--validate-only`）：校验全部目标预设，指定 `--preset` 时只校验该预设；
+ * - `mode: 'validate'`（`--validate-only`）：始终校验全部目标预设。`--preset` 只决定出片预设，
+ *   不缩小校验范围（母票要求「同一份候选布局同时校验全部目标预设」）；但它仍必须是目标预设之一，
+ *   拼错预设名和出片路径一样属于参数用法错误。
  * - `mode: 'render'`（出片 / `--dry-run`）：只能产出一个成片，多目标预设必须用 `--preset` 选定。
  *
  * @param {{ targetPresets: string[], presetId?: string, mode: 'validate' | 'render' }} options
@@ -106,5 +119,5 @@ export function planPresets({ targetPresets, presetId, mode }) {
     return [...targetPresets];
   }
 
-  return presetId === undefined ? [...targetPresets] : [presetId];
+  return [...targetPresets];
 }

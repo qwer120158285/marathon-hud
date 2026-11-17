@@ -29,14 +29,16 @@ import { motionAtFrame } from '../data/interpolate.mjs';
 import { prepareStatic } from '../shared/hud.js';
 import { resolvePreset } from '../shared/presets.js';
 import { jointValidate } from '../shared/layout.js';
+import { formatNumber } from '../shared/format.js';
 
 const USAGE = `用法：node cli/render.mjs --project <path/to/project.json> [options]
 
   --project <path>   必填，project.json 路径
-  --preset <id>      本次出片预设，必须在 targetPresets 内；存在多个目标预设时必须指定
+  --preset <id>      本次出片预设，必须在 targetPresets 内；出片时存在多个目标预设必须指定。
+                     --validate-only 总是校验全部目标预设，不受本参数影响
   --at-frame <n>     打印第 n 帧（0 起）对应的运动时刻与运动指标，用于核对数据源
   --validate-only    只做 Schema 与联合预设校验并打印报告（含数据源解析结果），
-                     不加载媒体、不启动 ffprobe、不启动 FFmpeg
+                     不加载媒体、不启动 ffprobe、不启动 FFmpeg；总是覆盖全部目标预设
   --dry-run          执行到导出前全量校验为止（含 ffprobe 尺寸比对），再跑完整帧循环、
                      把每帧 RGBA 写进计数 sink；不启动 FFmpeg
   --out <path>       覆盖 output.path（相对当前目录；未指定时用 project.json 里的相对路径）
@@ -46,11 +48,6 @@ const USAGE = `用法：node cli/render.mjs --project <path/to/project.json> [op
 ffprobe 的 width/height/SAR/DAR/旋转元数据 → HUD 帧尺寸 → 启动 FFmpeg。
 
 退出码：0 成功；2 配置或校验失败；3 FFmpeg 失败；4 数据源缺失。`;
-
-/** 数字转报告文本：整数不带小数点，小数最多三位。 */
-function formatNumber(value) {
-  return Number.isInteger(value) ? String(value) : String(Math.round(value * 1000) / 1000);
-}
 
 /**
  * 比例字段 → 报告文本。
@@ -475,4 +472,24 @@ async function main(argv) {
   return renderVideo({ args, loaded });
 }
 
-process.exitCode = await main(process.argv.slice(2));
+/**
+ * CLI 边界：把渲染期漏出来的异常归类成约定退出码。
+ *
+ * 已经按环节处理的错误（`StageError` / `UsageError` / `DataSourceError` / `FfmpegError`）
+ * 各自带了退出码；走到这里的多半是共享绘制层的普通 `Error`（例如「卡片放不下」），
+ * 属于配置或布局问题：按退出码 2 处理并只打印中文原因，不把栈回溯丢给使用者。
+ */
+function exitCodeFor(error) {
+  if (error instanceof FfmpegError) return EXIT_FFMPEG_ERROR;
+  if (error instanceof DataSourceError) return EXIT_DATA_MISSING;
+  return EXIT_CONFIG_ERROR;
+}
+
+let exitCode;
+try {
+  exitCode = await main(process.argv.slice(2));
+} catch (error) {
+  process.stderr.write(`错误：${error instanceof Error ? error.message : String(error)}\n`);
+  exitCode = exitCodeFor(error);
+}
+process.exitCode = exitCode;

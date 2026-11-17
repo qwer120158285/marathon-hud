@@ -5,18 +5,29 @@
  * 依据 ADR 0003：安全区是硬约束，边界判断用组件完整边界矩形，不能只查起始格。
  * 格边长与安全边距一律取 shared/presets.js 的解析结果，本文件不重复缩放。
  */
+import { formatNumber } from './format.js';
 
 /** 四角锚点；顺序即吸附平局时的优先级。 */
 export const ANCHORS = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
 
+/** 锚点是否从底部起算（`bottom-left` / `bottom-right`）。 */
+export function isBottomAnchor(anchor) {
+  return typeof anchor === 'string' && anchor.startsWith('bottom');
+}
+
+/** 锚点是否从右边起算（`top-right` / `bottom-right`）。 */
+export function isRightAnchor(anchor) {
+  return typeof anchor === 'string' && anchor.endsWith('right');
+}
+
 /** 锚点的水平方向：决定 `col` 从左边还是右边起算。 */
 function horizontalSide(anchor) {
-  return anchor.endsWith('right') ? 'right' : 'left';
+  return isRightAnchor(anchor) ? 'right' : 'left';
 }
 
 /** 锚点的垂直方向：决定 `row` 从顶部还是底部起算。 */
 function verticalSide(anchor) {
-  return anchor.startsWith('bottom') ? 'bottom' : 'top';
+  return isBottomAnchor(anchor) ? 'bottom' : 'top';
 }
 
 /**
@@ -139,13 +150,6 @@ export function safeAreaOverflow(component, preset) {
   return overflow;
 }
 
-/** 数字转报告文本：整数不带小数点，小数最多三位；缺失值直接写明。 */
-function formatNumber(value) {
-  if (value === undefined) return '缺失';
-  if (typeof value !== 'number' || !Number.isFinite(value)) return String(value);
-  return Number.isInteger(value) ? String(value) : String(Math.round(value * 1000) / 1000);
-}
-
 /** 错误「画布预设 X：组件 Y ...」的统一前缀；组件标识缺失时退回数组下标。 */
 function placementLabel(presetId, component, index) {
   const name = typeof component?.id === 'string' ? component.id : `layout.components[${index}]`;
@@ -203,12 +207,20 @@ export function jointValidate({ layout, targetPresets, presets }) {
   return { ok: errors.length === 0, errors, warnings };
 }
 
-/** 组件 id 唯一性；布局层独立于 Schema 的检查。 */
-function duplicateIdErrors(components) {
+/**
+ * 组件 id 唯一性：布局层独立于 Schema 的检查。
+ *
+ * 返回值同时带下标与完整文案：联合校验把它包成带 `kind` 的错误对象，
+ * `cli/project.mjs` 的语义校验直接取 `message`，两处只保留这一份判断与文案。
+ *
+ * @param {object[]} components
+ * @returns {{ index: number, firstIndex: number, componentId: string, message: string }[]}
+ */
+export function duplicateComponentIdErrors(components) {
   const errors = [];
   const firstIndexById = new Map();
 
-  components.forEach((component, index) => {
+  (components ?? []).forEach((component, index) => {
     if (typeof component?.id !== 'string') return;
     const firstIndex = firstIndexById.get(component.id);
     if (firstIndex === undefined) {
@@ -216,14 +228,24 @@ function duplicateIdErrors(components) {
       return;
     }
     errors.push({
-      kind: 'duplicate-id',
-      presetId: undefined,
+      index,
+      firstIndex,
       componentId: component.id,
       message: `layout.components[${index}].id 与 layout.components[${firstIndex}].id 重复（${JSON.stringify(component.id)}）`,
     });
   });
 
   return errors;
+}
+
+/** 组件 id 唯一性；布局层独立于 Schema 的检查。 */
+function duplicateIdErrors(components) {
+  return duplicateComponentIdErrors(components).map(({ componentId, message }) => ({
+    kind: 'duplicate-id',
+    presetId: undefined,
+    componentId,
+    message,
+  }));
 }
 
 /** 单个组件在单个预设下的格位 / 尺寸 / 锚点 / 安全区校验。 */
@@ -271,9 +293,16 @@ function checkComponent(component, preset, index) {
   return errors;
 }
 
-const EDGE_LABELS = { left: '左边', right: '右边', top: '上边', bottom: '下边' };
+/** 越界边 → 中文名；编辑器读数与联合校验报告共用同一份文案。 */
+export const EDGE_LABELS = Object.freeze({ left: '左边', right: '右边', top: '上边', bottom: '下边' });
 
-function describeOverflow(overflow) {
+/**
+ * 把 `safeAreaOverflow` 的结果写成可读文本（「下边越界 200 px（5 格）」）。
+ *
+ * @param {{ edge: 'left' | 'right' | 'top' | 'bottom', px: number, cells: number }[]} overflow
+ * @returns {string}
+ */
+export function describeOverflow(overflow) {
   return overflow
     .map(({ edge, px, cells }) => `${EDGE_LABELS[edge]}越界 ${formatNumber(px)} px（${formatNumber(cells)} 格）`)
     .join('，');

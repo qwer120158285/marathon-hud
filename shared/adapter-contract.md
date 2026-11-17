@@ -35,7 +35,7 @@
 | `resolveComponentRect(component, preset)` | `shared/layout.js` | 格位 + 锚点 → 像素矩形；绘制模块只用它取几何 |
 | `validateSchema(instance, schema)` | `shared/validate.js` | JSON Schema 子集校验，错误文本点名具体字段 |
 | `resolveTheme(preset)` / `COLORS` | `shared/theme.js` | 颜色、字号（px @ 短边 1080）、圆角、内边距，按预设换算 |
-| `prepareStatic(ctx, { preset, components, metrics, activity })` | `shared/hud.js` | 把静态内容（底板、标签、单位、路线底图、进度轨道与刻度）画到离屏画布，返回 `{ canvas, plan }` |
+| `prepareStatic(ctx, { preset, components, metrics, activity })` | `shared/hud.js` | 把静态内容（底板、标签、单位、完整路线、进度轨道与刻度）画到离屏画布，返回 `{ canvas, plan }` |
 | `drawFrame(ctx, { preset, metrics, static })` | `shared/hud.js` | 每帧：清屏 → 一次 `drawImage` 合成静态层 → 只画会变的数值、路线高亮与进度填充 |
 | `collectCriticalRegions(ctx, …)` | `shared/hud.js` | 关键区域（组件矩形外扩 8 px ∪ 文字框），供基准图比对 |
 

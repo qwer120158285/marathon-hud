@@ -42,6 +42,27 @@ test('shared/ 源码不引用 window、document、process、require() 或 node: 
   assert.deepEqual(violations, []);
 });
 
+// ADR 0001 的依赖方向：shared/ 是两端共用的最底层，不得反向引用数据层或 CLI 层。
+test('shared/ 不 import data/ 或 cli/：共享绘制层不依赖上层模块', () => {
+  const files = collectSourceFiles(SHARED_DIR);
+  const violations = [];
+
+  for (const file of files) {
+    const source = readFileSync(file, 'utf8');
+    const patterns = [
+      { label: 'import ../data/', pattern: /from\s+['"]\.\.\/data\// },
+      { label: 'import ../cli/', pattern: /from\s+['"]\.\.\/cli\// },
+      { label: '动态 import ../data/', pattern: /import\s*\(\s*['"]\.\.\/data\// },
+      { label: '动态 import ../cli/', pattern: /import\s*\(\s*['"]\.\.\/cli\// },
+    ];
+    for (const { label, pattern } of patterns) {
+      if (pattern.test(source)) violations.push(`${path.relative(SHARED_DIR, file)} 出现 ${label}`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 // 验收项 4：画布创建与字体注册只由两端薄适配层提供，接口以文档形式冻结。
 test('两端薄适配层接口约定写明 createCanvas 与 registerFonts', () => {
   const doc = readFileSync(path.join(SHARED_DIR, 'adapter-contract.md'), 'utf8');

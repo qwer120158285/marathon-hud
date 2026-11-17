@@ -55,7 +55,7 @@ export const METRICS_CARD = {
 export const ROUTE = {
   /** 轨迹到组件矩形四边的内边距。 */
   padding: 18,
-  /** 完整路线底图（不变，属于静态层）。 */
+  /** 完整路线（整场不变，属于静态层）。 */
   lineWidth: 4,
   baseColor: 'rgba(255, 255, 255, 0.42)',
   /** 已完成的一段（每帧变化，属于动态层）。 */
@@ -111,8 +111,13 @@ const round = (value) => Math.round(value);
 /**
  * 按画布预设换算出一份实际像素的样式表。
  *
+ * 返回的是四类组件合并后的样式：`METRICS_CARD` 的数字在顶层，路线、进度、天气各自在
+ * `route` / `progress` / `weather` 子对象里；不是 `METRICS_CARD` 本身。
+ *
  * @param {{ scale?: number }} preset shared/presets.js 解析出的画布预设
- * @returns {typeof METRICS_CARD} 数值已乘 `scale` 的新对象
+ * @returns {{ radius: number, strokeWidth: number, paddingX: number, paddingY: number,
+ *             rowGap: number, unitGap: number, label: object, value: object, unit: object,
+ *             ascentRatio: number, route: object, progress: object, weather: object }}
  */
 export function resolveTheme(preset) {
   const scale = preset?.scale ?? 1;
