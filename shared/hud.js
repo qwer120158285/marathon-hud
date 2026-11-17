@@ -10,12 +10,12 @@
  * - `DRAWERS` 按组件 id 分派；weather 是纯静态覆盖（整场不变，`dynamic` 恒为空）。
  */
 import { resolveComponentRect } from './layout.js';
-import { CJK_FONT_FAMILY, COLORS, FONT_FAMILY, resolveTheme } from './theme.js';
+import { COLORS, FONT_FAMILY, resolveTheme } from './theme.js';
 import {
   DEFAULT_TIMEZONE,
-  describeWeatherCode,
   formatWallClock,
   mergeWeatherValues,
+  weatherPhrase,
 } from './weather.js';
 import { shouldRender } from '../data/availability.mjs';
 
@@ -27,11 +27,6 @@ function isDigit(char) {
 /** 组装 Canvas 字体串；字重决定选中哪一份 Inter 文件。 */
 function fontString({ weight, size }) {
   return `${weight} ${size}px ${FONT_FAMILY}`;
-}
-
-/** 纯 CJK 短语的字体串（Inter 无汉字字形，见 theme.js 的 CJK_FONT_FAMILY 说明）。 */
-function cjkFontString({ weight, size }) {
-  return `${weight} ${size}px "${CJK_FONT_FAMILY}"`;
 }
 
 /**
@@ -713,7 +708,8 @@ function formatPrecipitation(mm) {
  *
  * 显示规则（ADR 0004：`shouldRender = configEnabled && dataAvailable`）：
  * - 组件不可见、没有快照、或快照里一个可用数值都没有 → 整块不画（不画 0、不画占位）；
- * - 缺某个数值就少那一段：只有温度时没有湿度 / 降水那段，未知天气码省略短语；
+ * - 缺某个数值就少那一段：只有温度时没有湿度 / 降水那段，天气码不是整数时省略短语；
+ * - 天气短语用英文（见 shared/weather.js）：全部分支只走随项目打包的 Inter；
  * - 墙钟取 `activity.startTimeUtc` 按配置时区换算，与视频当前时刻无关。
  */
 function planWeather(ctx, { preset, component, activity, weatherSnapshot, timezone }) {
@@ -721,7 +717,7 @@ function planWeather(ctx, { preset, component, activity, weatherSnapshot, timezo
   if (!shouldRender(component.visible === true, merged !== null)) return null;
 
   const values = merged.values;
-  const phrase = describeWeatherCode(values.weatherCode);
+  const phrase = weatherPhrase(values.weatherCode);
   const wallClock = formatWallClock(activity?.startTimeUtc, timezone ?? DEFAULT_TIMEZONE);
   const temperature = formatTemperature(values.temperatureC);
   const detailParts = [formatHumidity(values.humidityPct), formatPrecipitation(values.precipitationMm)]
@@ -800,10 +796,9 @@ function planWeather(ctx, { preset, component, activity, weatherSnapshot, timezo
   if (hasValueRow) {
     // 与数据卡一致：主数值用 value 字号，单位与短语用 unit 字号跟在后面。
     // 没有温度时退化为短语本身（用 value 字号），不重复画两遍。
+    // 短语是英文，与其余标签同一套 Inter，不再有第二套字体分支。
     const primary = temperature ?? phrase;
-    // 没有温度时短语就是主内容：用 CJK 字体 + value 字号。
-    const primaryFont = temperature === null ? cjkFontString(style.value) : valueFont;
-    staticTexts.push({ text: primary, font: primaryFont, color: COLORS.value, x: textX, baseline: valueBaseline });
+    staticTexts.push({ text: primary, font: valueFont, color: COLORS.value, x: textX, baseline: valueBaseline });
 
     if (temperature !== null) {
       ctx.font = valueFont;
@@ -815,7 +810,7 @@ function planWeather(ctx, { preset, component, activity, weatherSnapshot, timezo
       if (phrase !== null) {
         staticTexts.push({
           text: phrase,
-          font: cjkFontString(style.unit),
+          font: unitFont,
           color: COLORS.label,
           x: cursorX,
           baseline: valueBaseline,

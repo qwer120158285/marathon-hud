@@ -14,6 +14,7 @@ import {
   describeWeatherCode,
   formatWallClock,
   mergeWeatherValues,
+  weatherPhrase,
 } from '../shared/weather.js';
 import { createCanvas, registerFonts } from '../cli/adapter.mjs';
 import { drawFrame, prepareStatic } from '../shared/hud.js';
@@ -93,23 +94,34 @@ test('默认时区是 Asia/Shanghai（配置缺省时的解释口径）', () => 
   assert.equal(DEFAULT_TIMEZONE, 'Asia/Shanghai');
 });
 
-test('WMO 天气码给中文短语：晴 / 多云 / 阴 / 雾 / 毛毛雨 / 雨 / 雪 / 阵雨 / 雷阵雨', () => {
-  assert.equal(describeWeatherCode(0), '晴');
-  assert.equal(describeWeatherCode(2), '局部多云');
-  assert.equal(describeWeatherCode(3), '阴');
-  assert.equal(describeWeatherCode(45), '雾');
-  assert.equal(describeWeatherCode(51), '毛毛雨');
-  assert.equal(describeWeatherCode(63), '中雨');
-  assert.equal(describeWeatherCode(65), '大雨');
-  assert.equal(describeWeatherCode(71), '小雪');
-  assert.equal(describeWeatherCode(80), '阵雨');
-  assert.equal(describeWeatherCode(95), '雷阵雨');
+// 英文短语不是偏好问题：Inter 没有汉字字形，中文会落到系统字体上，基准图跨机器不可复现
+// （ADR 0001「字体文件随项目打包，不依赖操作系统字体」）。
+test('WMO 天气码给英文短语：CLEAR / PARTLY CLOUDY / OVERCAST / FOG / DRIZZLE / RAIN / SNOW / SHOWERS / THUNDER', () => {
+  assert.equal(describeWeatherCode(0), 'CLEAR');
+  assert.equal(describeWeatherCode(2), 'PARTLY CLOUDY');
+  assert.equal(describeWeatherCode(3), 'OVERCAST');
+  assert.equal(describeWeatherCode(45), 'FOG');
+  assert.equal(describeWeatherCode(51), 'DRIZZLE');
+  assert.equal(describeWeatherCode(63), 'RAIN');
+  assert.equal(describeWeatherCode(65), 'HEAVY RAIN');
+  assert.equal(describeWeatherCode(71), 'SNOW');
+  assert.equal(describeWeatherCode(80), 'SHOWERS');
+  assert.equal(describeWeatherCode(95), 'THUNDER');
 });
 
-test('未知天气码省略短语，不编造描述也不写成 0', () => {
+test('未知天气码不编造描述：describeWeatherCode 返回 null，weatherPhrase 退回原始码', () => {
   assert.equal(describeWeatherCode(999), null);
   assert.equal(describeWeatherCode(undefined), null);
   assert.equal(describeWeatherCode(null), null);
+
+  // 卡片上显示 `WX <code>`：未知码是「没收录」而不是「没有数据」。
+  assert.equal(weatherPhrase(999), 'WX 999');
+  assert.equal(weatherPhrase(47), 'WX 47');
+  assert.equal(weatherPhrase(51), 'DRIZZLE');
+  // 非整数才是真正的缺值，一律不画。
+  assert.equal(weatherPhrase(undefined), null);
+  assert.equal(weatherPhrase(null), null);
+  assert.equal(weatherPhrase('51'), null);
 });
 
 test('快照数值原样取出；没有手工覆盖时 overridden 为空', () => {
@@ -186,7 +198,7 @@ test('示意数据里 weather 组件已有快照、时区与活动开始时刻�
   assert.equal(sample.timezone, 'Asia/Shanghai');
   assert.equal(sample.activity.startTimeUtc, '2026-11-15T11:00:00.000Z');
   assert.equal(sample.weatherSnapshot.values.weatherCode, 51);
-  assert.equal(describeWeatherCode(sample.weatherSnapshot.values.weatherCode), '毛毛雨');
+  assert.equal(describeWeatherCode(sample.weatherSnapshot.values.weatherCode), 'DRIZZLE');
 });
 
 // ---------------------------------------------------------------------------
@@ -201,11 +213,11 @@ test('weather 进绘制计划：底板 + 标签 + 墙钟 + 温度 + 天气短语
   assert.deepEqual(item.rect, resolveComponentRect(weatherComponent, PRESET));
   assert.equal(item.panel.height > 0, true);
   assert.deepEqual(item.dynamic, [], '天气与墙钟整场不变，不应有逐帧内容');
-  assert.deepEqual(textsOf(item), ['WEATHER', '19:00', '22', '°C', '毛毛雨', '89% · 0.1 MM']);
+  assert.deepEqual(textsOf(item), ['WEATHER', '19:00', '22', '°C', 'DRIZZLE', '89% · 0.1 MM']);
   assert.deepEqual(item.weather.values, {
     temperatureC: 22, humidityPct: 89, precipitationMm: 0.1, weatherCode: 51,
   });
-  assert.equal(item.weather.phrase, '毛毛雨');
+  assert.equal(item.weather.phrase, 'DRIZZLE');
   assert.equal(item.weather.wallClock, '19:00');
 });
 
@@ -215,12 +227,12 @@ test('手工覆盖优先：覆盖 18 °C 后画面写 18°C，不再出现快照
   });
   const item = planOf(layer, 'weather');
 
-  assert.deepEqual(textsOf(item), ['WEATHER', '19:00', '18', '°C', '毛毛雨', '89% · 0.1 MM']);
+  assert.deepEqual(textsOf(item), ['WEATHER', '19:00', '18', '°C', 'DRIZZLE', '89% · 0.1 MM']);
   assert.equal(item.weather.values.temperatureC, 18);
   assert.deepEqual(item.weather.overridden, ['temperatureC']);
 });
 
-test('未知天气码省略短语，不编造描述', () => {
+test('未知天气码显示原始码 WX 999，不编造描述，也不落任何汉字', () => {
   const layer = prepare({
     weatherSnapshot: {
       ...sample.weatherSnapshot,
@@ -229,8 +241,12 @@ test('未知天气码省略短语，不编造描述', () => {
   });
   const item = planOf(layer, 'weather');
 
-  assert.equal(item.weather.phrase, null);
+  assert.equal(item.weather.phrase, 'WX 999');
+  assert.equal(textsOf(item).includes('WX 999'), true);
+  // 卡片上不允许出现汉字：Inter 没有汉字字形，落到系统字体会让基准图跨机器不可复现。
   assert.equal(textsOf(item).some((text) => /[\u4e00-\u9fa5]/.test(text)), false);
+  // 所有文字一律用随项目打包的 Inter。
+  for (const text of item.staticTexts) assert.match(text.font, /px Inter$/);
 });
 
 test('只有温度时不画假湿度与假降水：缺哪个字段就少哪一段', () => {
@@ -288,7 +304,7 @@ test('渲染期零网络：全局 fetch 抛错时静态预绘与每帧绘制照�
   };
   try {
     const layer = prepare();
-    assert.deepEqual(textsOf(planOf(layer, 'weather')), ['WEATHER', '19:00', '22', '°C', '毛毛雨', '89% · 0.1 MM']);
+    assert.deepEqual(textsOf(planOf(layer, 'weather')), ['WEATHER', '19:00', '22', '°C', 'DRIZZLE', '89% · 0.1 MM']);
 
     const ctx = recordingContext();
     drawFrame(ctx, { preset: PRESET, metrics: fullMetrics, static: layer });
@@ -307,5 +323,5 @@ test('手填快照（没有 requestUrl / grid / fetchedAt）同样能出片：�
     },
   });
 
-  assert.deepEqual(textsOf(planOf(layer, 'weather')), ['WEATHER', '19:00', '30', '°C', '晴', '60% · 0.0 MM']);
+  assert.deepEqual(textsOf(planOf(layer, 'weather')), ['WEATHER', '19:00', '30', '°C', 'CLEAR', '60% · 0.0 MM']);
 });

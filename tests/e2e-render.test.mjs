@@ -315,3 +315,35 @@ test('输出目录不存在时退出码 3，错误里带 FFmpeg 的 stderr 片�
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// 验收项 4 / 5（真进程，--out 路径）：FFmpeg 写不出成片时进程退出码必须是 3。
+// 与上一条的区别：这次不是 project.json 里的 output.path，而是命令行 --out 指定的目录不存在。
+test('--out 指向不存在的目录时退出码 3，stderr 带 FFmpeg 片段', { timeout: 60000 }, async () => {
+  const videoPath = makeVideo({
+    key: 'e2e-portrait-green',
+    width: PRESET.width,
+    height: PRESET.height,
+    seconds: 1,
+    fps: 30,
+    color: '0x2E8B57',
+  });
+  const { dir, projectPath } = makeProject({ videoPath });
+  const missingDir = path.join(dir, 'no-such-dir');
+
+  try {
+    const startedAt = Date.now();
+    const { code, stderr } = await runCliAsync([
+      '--project', projectPath,
+      '--preset', 'douyin-portrait',
+      '--out', path.join(missingDir, 'final.mp4'),
+    ], { timeoutMs: 50000 });
+
+    assert.equal(code, 3, `期望退出码 3，实际 ${code}\n${stderr}`);
+    assert.match(stderr, /\[ffmpeg-start\]/);
+    assert.match(stderr, /No such file or directory|Not a directory|Permission denied/);
+    assert.equal(existsSync(path.join(missingDir, 'final.mp4')), false);
+    assert.ok(Date.now() - startedAt < 50000, '不能挂在管道上');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

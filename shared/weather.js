@@ -17,50 +17,72 @@ export const WEATHER_SOURCE = 'open-meteo-historical-archive';
 export const WEATHER_VALUE_KEYS = ['temperatureC', 'humidityPct', 'precipitationMm', 'weatherCode'];
 
 /**
- * WMO 4677 天气码 → 中文短语。
+ * WMO 4677 天气码 → 英文短语。
+ *
+ * 为什么是英文而不是中文：卡片上只允许出现随项目打包的 Inter 字体（ADR 0001「字体文件随项目
+ * 打包，不依赖操作系统字体」）。Inter 没有汉字字形，中文短语必然落到本机系统字体上，
+ * 换一台机器会静默回退、字宽变化（实测「晴」40 px 下 40.00 → 34.60），基准图不再可复现。
+ * 英文短语与 HUD 其余标签（PACE / HR / CAD / DISTANCE / BPM / SPM）用同一套字体与写法。
  *
  * 只收录 Open-Meteo 常用取值；同组码用同一短语（毛毛雨 51/53/55、雨 61/63/65 按强度区分）。
- * 未收录的码不猜描述：`describeWeatherCode` 返回 null，卡片上省略短语（写错不如不写）。
  */
 const WMO_PHRASES = new Map([
-  [0, '晴'],
-  [1, '大部晴朗'],
-  [2, '局部多云'],
-  [3, '阴'],
-  [45, '雾'],
-  [48, '雾凇'],
-  [51, '毛毛雨'],
-  [53, '毛毛雨'],
-  [55, '毛毛雨'],
-  [56, '冻毛毛雨'],
-  [57, '冻毛毛雨'],
-  [61, '小雨'],
-  [63, '中雨'],
-  [65, '大雨'],
-  [66, '冻雨'],
-  [67, '冻雨'],
-  [71, '小雪'],
-  [73, '中雪'],
-  [75, '大雪'],
-  [77, '雪粒'],
-  [80, '阵雨'],
-  [81, '强阵雨'],
-  [82, '暴阵雨'],
-  [85, '阵雪'],
-  [86, '强阵雪'],
-  [95, '雷阵雨'],
-  [96, '雷阵雨伴冰雹'],
-  [99, '雷阵雨伴冰雹'],
+  [0, 'CLEAR'],
+  [1, 'MOSTLY CLEAR'],
+  [2, 'PARTLY CLOUDY'],
+  [3, 'OVERCAST'],
+  [45, 'FOG'],
+  [48, 'RIME FOG'],
+  [51, 'DRIZZLE'],
+  [53, 'DRIZZLE'],
+  [55, 'DRIZZLE'],
+  [56, 'FREEZING DRIZZLE'],
+  [57, 'FREEZING DRIZZLE'],
+  [61, 'RAIN'],
+  [63, 'RAIN'],
+  [65, 'HEAVY RAIN'],
+  [66, 'FREEZING RAIN'],
+  [67, 'FREEZING RAIN'],
+  [71, 'SNOW'],
+  [73, 'SNOW'],
+  [75, 'HEAVY SNOW'],
+  [77, 'SNOW GRAINS'],
+  [80, 'SHOWERS'],
+  [81, 'SHOWERS'],
+  [82, 'HEAVY SHOWERS'],
+  [85, 'SNOW SHOWERS'],
+  [86, 'SNOW SHOWERS'],
+  [95, 'THUNDER'],
+  [96, 'THUNDER HAIL'],
+  [99, 'THUNDER HAIL'],
 ]);
 
 /**
- * 天气码 → 中文短语。
+ * 天气码 → 已知码的英文短语。
+ *
+ * 未收录的码不猜描述：返回 null，调用方自己决定是省略还是显示原始码（见 `weatherPhrase`）。
+ *
  * @param {unknown} code
  * @returns {string|null} 未收录或不是整数时返回 null
  */
 export function describeWeatherCode(code) {
   if (!Number.isInteger(code)) return null;
   return WMO_PHRASES.get(code) ?? null;
+}
+
+/**
+ * 卡片上实际显示的天气短语：已知码给英文短语，未知整数码给 `WX <code>`。
+ *
+ * 显示原始码而不是省略：未知码是「我们没收录」而不是「没有数据」，
+ * 留着 `WX 47` 至少能让人回查 WMO 表；只有非整数（真正没有值）才返回 null。
+ *
+ * @param {unknown} code
+ * @returns {string|null}
+ */
+export function weatherPhrase(code) {
+  const phrase = describeWeatherCode(code);
+  if (phrase !== null) return phrase;
+  return Number.isInteger(code) ? `WX ${code}` : null;
 }
 
 /** 数值字段：必须是有限数字；天气码额外要求整数。 */
