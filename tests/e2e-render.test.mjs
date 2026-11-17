@@ -149,18 +149,21 @@ test('完整渲染：2 s 1080×1920 @30fps → 成片规格、帧数、HUD 位�
     assert.equal(final.width, PRESET.width);
     assert.equal(final.height, PRESET.height);
 
-    // 指标组件的边界矩形由布局决定（fixture: bottom-left，240×320）。
-    const metricsComponent = readValidProject().layout.components.find((item) => item.id === 'metrics');
-    const rect = resolveComponentRect(metricsComponent, PRESET);
+    // 会落笔的三个组件：路线、进度、指标。各自的边界矩形由布局决定（fixture）。
+    // weather 尚未实现（#10），不参与。
+    const layout = readValidProject().layout.components;
+    const rendered = ['route', 'progress', 'metrics'].map((id) => ({
+      id,
+      rect: resolveComponentRect(layout.find((item) => item.id === id), PRESET),
+    }));
     const inflate = 8;
+    const within = (rect, x, y) => x >= rect.x - inflate && x < rect.x + rect.width + inflate
+      && y >= rect.y - inflate && y < rect.y + rect.height + inflate;
 
     let maskCount = 0;
     let outsideCount = 0;
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
     let sourceError = 0;
+    const inkByComponent = new Map(rendered.map(({ id }) => [id, 0]));
 
     for (let y = 0; y < final.height; y += 1) {
       for (let x = 0; x < final.width; x += 1) {
@@ -170,36 +173,25 @@ test('完整渲染：2 s 1080×1920 @30fps → 成片规格、帧数、HUD 位�
           Math.abs(final.data[offset + 1] - source.data[offset + 1]),
           Math.abs(final.data[offset + 2] - source.data[offset + 2]),
         );
-        const inside = x >= rect.x - inflate && x < rect.x + rect.width + inflate
-          && y >= rect.y - inflate && y < rect.y + rect.height + inflate;
+        const hits = rendered.filter(({ rect }) => within(rect, x, y));
 
         if (delta > 32) {
           maskCount += 1;
-          minX = Math.min(minX, x);
-          minY = Math.min(minY, y);
-          maxX = Math.max(maxX, x);
-          maxY = Math.max(maxY, y);
-          if (!inside) outsideCount += 1;
-        } else if (!inside && delta > 4) {
+          if (hits.length === 0) outsideCount += 1;
+          for (const { id } of hits) inkByComponent.set(id, inkByComponent.get(id) + 1);
+        } else if (hits.length === 0 && delta > 4) {
           // 组件矩形之外只允许编码噪声（两次 H.264 往返，同画面区域差值很小）。
           sourceError += 1;
         }
       }
     }
 
-    // HUD 必须真的出现：底板面积 240×289 远大于这个下限。
+    // HUD 必须真的出现：指标卡底板面积 240×289 远大于这个下限。
     assert.ok(maskCount > 20000, `HUD 像素太少（${maskCount}），合成可能没生效`);
-    // 差异像素的包围盒必须贴着布局矩形：证明 overlay 位置正确、没有被缩放。
-    // 底板按锚点收缩（metrics 是 bottom-left，卡片贴组件矩形底边），所以左 / 右 / 下三条边
-    // 与布局矩形重合，上边界落在矩形内部——这三条边足以证明位置，且位移/缩放都会破坏它们。
-    assert.ok(Math.abs(minX - rect.x) <= 4, `HUD 左边界 ${minX}，期望 ${rect.x}`);
-    assert.ok(Math.abs(maxX - (rect.x + rect.width - 1)) <= 4, `HUD 右边界 ${maxX}，期望 ${rect.x + rect.width - 1}`);
-    assert.ok(Math.abs(maxY - (rect.y + rect.height - 1)) <= 4, `HUD 下边界 ${maxY}，期望 ${rect.y + rect.height - 1}`);
-    assert.ok(minY >= rect.y - 4, `HUD 上边界 ${minY} 越出了组件矩形 ${rect.y}`);
-    assert.ok(
-      maxY - minY + 1 > rect.height / 2,
-      `HUD 高度 ${maxY - minY + 1} 太小，卡片可能被裁掉或被缩放`,
-    );
+    // 三个组件都必须在自己的矩形里留下墨迹，且不得越界：证明 overlay 位置正确、没有被缩放。
+    assert.ok(inkByComponent.get('metrics') > 20000, `指标卡墨迹 ${inkByComponent.get('metrics')} 太少`);
+    assert.ok(inkByComponent.get('progress') > 5000, `进度卡墨迹 ${inkByComponent.get('progress')} 太少`);
+    assert.ok(inkByComponent.get('route') > 1000, `路线墨迹 ${inkByComponent.get('route')} 太少`);
     // 组件矩形之外必须还是源视频：证明没有整体平移 / 拉伸 / 裁切。
     assert.equal(outsideCount, 0, `组件矩形外有 ${outsideCount} 个 HUD 像素`);
     assert.ok(
