@@ -243,7 +243,7 @@ test('对齐偏移参与运动时刻换算', async () => {
   assert.notEqual(Buffer.compare(atZero, atOneSecond), 0);
 });
 
-// 防御性检查：渲染画布尺寸必须等于目标画布预设（ADR 0003「HUD 帧与目标画布不一致 → 拒绝导出」）。
+// 防御性检查：渲染画布尺寸必须等于画布预设（ADR 0003「HUD 帧与画布预设不一致 → 拒绝导出」）。
 test('画布尺寸与预设不一致时抛 FrameSizeError，且不写入任何字节', async () => {
   let writes = 0;
   const badFactory = () => createCanvas({ width: 50, height: 50 });

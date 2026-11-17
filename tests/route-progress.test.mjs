@@ -91,7 +91,7 @@ function recordingContext({ measure = false } = {}) {
 // 验收项 1：整条 GPS 轨迹压进组件矩形，等比、居中、留内边距。
 // 独立期望值：示意轨迹是一圈 0.01° × 0.01° 的矩形；等距圆柱投影按 cos(平均纬度) 压缩经度，
 // cos(22.505°) = 0.92388，所以投影后的宽高比必须是 0.92388，长边顶满内边距。
-test('路线底图：整条轨迹等比压进组件矩形，长边顶满内边距、四周留白相等', () => {
+test('完整路线：整条轨迹等比压进组件矩形，长边顶满内边距、四周留白相等', () => {
   const layer = prepare([componentById('route')]);
   const route = planOf(layer, 'route').route;
   const rect = resolveComponentRect(componentById('route'), PRESET);
@@ -132,7 +132,7 @@ test('路线断笔：GPS 缺失处拆成独立路径段，缺口两侧不相连�
   const route = planOf(prepare([routeComponent]), 'route').route;
 
   assert.deepEqual(route.runs.map((run) => run.length), [12, 24], '缺口两侧各自成段：第 12–16 点缺失，前后各成一段');
-  assert.equal(ctx.calls.beginPath, 1, '路线底图只建一条路径');
+  assert.equal(ctx.calls.beginPath, 1, '完整路线只建一条路径');
   assert.equal(ctx.calls.moveTo.length, 2, '每个连续段一次 moveTo：2 段而不是 1 段');
   assert.equal(ctx.calls.lineTo.length, 34, '36 个 GPS 点、2 段路径 → 34 条线段');
   assert.equal(route.segmentCount, 34);
@@ -467,7 +467,7 @@ test('子组件默认关闭：没写 subcomponents 时功率、海拔、Lap 刻�
 // 两端一致：静态层一次、每帧只合成一次 + 只画变化部分
 // ---------------------------------------------------------------------------
 
-// 验收项 6：路线底图、进度轨道 / 刻度 / 文字都属于静态层；每帧只合成一次，
+// 验收项 6：完整路线、进度轨道 / 刻度 / 文字都属于静态层；每帧只合成一次，
 // 落笔的只有会变的东西（已完成段、箭头、进度条填充、指标数值）。
 test('四类组件同帧：静态文字一次也不重写，每帧只有变化部分落笔', () => {
   const layer = prepare(sample.layout.components);
@@ -482,7 +482,7 @@ test('四类组件同帧：静态文字一次也不重写，每帧只有变化�
 
   assert.equal(recorder.calls.drawImage, 1, '每帧只合成一次静态层');
   assert.equal(recorder.calls.clearRect, 1);
-  assert.equal(recorder.calls.stroke, 1, '只有路线高亮段描一次（底图在静态层）');
+  assert.equal(recorder.calls.stroke, 1, '只有路线高亮段描一次（完整路线在静态层）');
   assert.equal(recorder.calls.fill, 2, '箭头 + 进度条填充各一次');
 
   // 每帧落笔的字符只有数值：数字、冒号、小数点。

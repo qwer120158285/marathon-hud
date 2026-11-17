@@ -1,10 +1,15 @@
 /**
  * 数据可用性（GLOSSARY：数据可用性）——「整个活动是否有这个指标」。
  *
- * 只回答数据侧的事实，与组件是否开启无关；最终是否绘制由
- * `shouldRender = configEnabled && dataAvailable` 决定（ADR 0004）。
- * 判定结果只在运行时产生，不写进 project.json。
+ * 只回答数据侧的事实，与组件是否开启无关；最终是否绘制由 `shouldRender` 决定
+ * （ADR 0004）。判定结果只在运行时产生，不写进 project.json。
  */
+
+/**
+ * 绘制判据的实现在 shared/policy.js：判据属于共享绘制层，数据层不定义绘制规则。
+ * 这里重新导出，保持既有调用方（`from '../data/availability.mjs'`）不变。
+ */
+export { shouldRender } from '../shared/policy.js';
 
 /**
  * @param {object[]} samples 规范化采样点
@@ -24,13 +29,4 @@ export function computeAvailability(samples, kmMarkers = []) {
     gct: false,
     lapMarkers: kmMarkers.length > 0,
   };
-}
-
-/**
- * 绘制判据：组件开启且数据可用才绘制。缺值时既不画也不填占位数字。
- * @param {boolean} configEnabled
- * @param {boolean} dataAvailable
- */
-export function shouldRender(configEnabled, dataAvailable) {
-  return configEnabled === true && dataAvailable === true;
 }

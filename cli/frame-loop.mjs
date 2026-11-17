@@ -13,7 +13,7 @@ import { createCanvas } from './adapter.mjs';
 import { drawFrame } from '../shared/hud.js';
 import { motionAtFrame } from '../data/interpolate.mjs';
 
-/** HUD 帧尺寸与目标画布预设不一致（ADR 0003：拒绝导出）。 */
+/** HUD 帧尺寸与画布预设不一致（ADR 0003：拒绝导出）。 */
 export class FrameSizeError extends Error {
   constructor(message) {
     super(message);

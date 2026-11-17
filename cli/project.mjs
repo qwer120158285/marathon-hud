@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import { validateSchema } from '../shared/validate.js';
 import { BUILTIN_PRESET_IDS, isBuiltinPreset } from '../shared/presets.js';
+import { duplicateComponentIdErrors } from '../shared/layout.js';
 
 /** Schema 是契约文件，直接读仓库里的那一份，不在代码里复制副本。 */
 const SCHEMA_PATH = fileURLToPath(new URL('../docs/schema/project.schema.json', import.meta.url));
@@ -49,20 +50,10 @@ function validateSemantics(project) {
 
   checkPresetId(project.layout?.sourcePresetId, 'layout.sourcePresetId', errors);
 
+  // 组件 id 唯一性：判断与文案都来自 shared/layout.js（布局层独立成立），这里只取 message。
   const components = project.layout?.components;
   if (Array.isArray(components)) {
-    const firstIndexById = new Map();
-    components.forEach((component, index) => {
-      if (!isPlainObject(component) || typeof component.id !== 'string') return;
-      const firstIndex = firstIndexById.get(component.id);
-      if (firstIndex === undefined) {
-        firstIndexById.set(component.id, index);
-        return;
-      }
-      errors.push(
-        `layout.components[${index}].id 与 layout.components[${firstIndex}].id 重复（${JSON.stringify(component.id)}）`,
-      );
-    });
+    errors.push(...duplicateComponentIdErrors(components).map((error) => error.message));
   }
 
   return errors;

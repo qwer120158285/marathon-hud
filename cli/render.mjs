@@ -29,6 +29,7 @@ import { motionAtFrame } from '../data/interpolate.mjs';
 import { prepareStatic } from '../shared/hud.js';
 import { resolvePreset } from '../shared/presets.js';
 import { jointValidate } from '../shared/layout.js';
+import { formatNumber } from '../shared/format.js';
 
 const USAGE = `用法：node cli/render.mjs --project <path/to/project.json> [options]
 
@@ -47,11 +48,6 @@ const USAGE = `用法：node cli/render.mjs --project <path/to/project.json> [op
 ffprobe 的 width/height/SAR/DAR/旋转元数据 → HUD 帧尺寸 → 启动 FFmpeg。
 
 退出码：0 成功；2 配置或校验失败；3 FFmpeg 失败；4 数据源缺失。`;
-
-/** 数字转报告文本：整数不带小数点，小数最多三位。 */
-function formatNumber(value) {
-  return Number.isInteger(value) ? String(value) : String(Math.round(value * 1000) / 1000);
-}
 
 /**
  * 比例字段 → 报告文本。

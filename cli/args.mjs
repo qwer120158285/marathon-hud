@@ -36,6 +36,17 @@ const BOOLEAN_FLAGS = new Map([
 ]);
 
 /**
+ * `cli/weather.mjs` 的取值参数名 → 解析结果字段。
+ *
+ * 天气入口只有两个取值参数，不值得硬套渲染入口的 `parseArgs`；但参数名与 `UsageError`
+ * 必须同源，避免两个入口对同一个拼写给出不同错误。
+ */
+export const WEATHER_VALUE_FLAGS = Object.freeze({
+  '--project': 'project',
+  '--endpoint': 'endpoint',
+});
+
+/**
  * 解析命令行参数。
  * @param {string[]} argv 不含 node 与脚本路径的参数数组
  * @returns {{ project?: string, preset?: string, out?: string, atFrame?: number,
