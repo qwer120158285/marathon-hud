@@ -112,6 +112,21 @@ export async function runFrameLoop({
 
     // 直通 RGBA，长度 = W×H×4。交出后不再被帧循环持有。
     const buffer = readFrameRgba(canvas);
+
+    // 每帧都核对画布实际尺寸与字节数：复用画布被换尺寸、适配层返回别的像素格式，
+    // 都会让管道错位；在这里拦下比让 FFmpeg 收错帧更容易定位。
+    if (canvas.width !== preset.width || canvas.height !== preset.height) {
+      throw new FrameSizeError(
+        `HUD 帧尺寸 ${canvas.width}×${canvas.height}，期望 ${preset.width}×${preset.height}（画布预设 ${preset.id}）`,
+      );
+    }
+    if (buffer.byteLength !== bytesPerFrame) {
+      throw new FrameSizeError(
+        `HUD 帧字节数 ${buffer.byteLength}，期望 ${bytesPerFrame}`
+          + `（${preset.width}×${preset.height}×4，画布预设 ${preset.id}）`,
+      );
+    }
+
     const pending = sink.write(buffer);
 
     if (pending !== null && typeof pending === 'object' && typeof pending.then === 'function') {

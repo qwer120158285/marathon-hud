@@ -267,6 +267,36 @@ test('画布尺寸与预设不一致时抛 FrameSizeError，且不写入任何�
   assert.equal(writes, 0);
 });
 
+// 每帧的字节数必须与画布预设的 W×H×4 严格相等；不等就说明画布被换了尺寸或像素格式变了，
+// 静默写进管道会让 FFmpeg 收到错位的帧。
+test('单帧字节数与 W×H×4 不符时抛 FrameSizeError，且不把坏帧交给 sink', async () => {
+  const { ctx } = createCanvas({ width: TINY.width, height: TINY.height });
+  const badCanvas = {
+    width: TINY.width,
+    height: TINY.height,
+    data: () => new Uint8ClampedArray(8),
+  };
+  let writes = 0;
+
+  await assert.rejects(
+    runFrameLoop({
+      motion: FLAT_MOTION,
+      preset: TINY,
+      fps: 30,
+      totalFrames: 3,
+      static: emptyStaticLayer(TINY),
+      sink: { write() { writes += 1; return true; } },
+      createFrameCanvas: () => ({ canvas: badCanvas, ctx }),
+    }),
+    (error) => {
+      assert.ok(error instanceof FrameSizeError);
+      assert.match(error.message, /HUD 帧字节数 8，期望 82944（108×192×4，画布预设 tiny）/);
+      return true;
+    },
+  );
+  assert.equal(writes, 0);
+});
+
 // 进程内只持有 1–2 帧（Q5）。60 帧 @ 1080×1920 若累积，约为 497 MB；
 // 允许 200 MB 的粗粒度余量，仍能把「累积所有帧」的实现区分出来。
 test('帧循环不累积帧（60 帧的 RSS 增长远小于全部帧体积）', async () => {

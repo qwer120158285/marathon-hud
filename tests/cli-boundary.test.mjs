@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { runCli, VALID_PROJECT_PATH, brokenProject } from './helpers/cli.mjs';
+import { makeVideo, projectWithVideo } from './helpers/video.mjs';
 
 // 验收项 5：`--project` 必填。
 test('缺少 --project 时退出码 2 并说明该参数必填', () => {
@@ -65,8 +66,9 @@ test('--preset 不在 targetPresets 内时退出码 2', () => {
   assert.match(stderr, /--preset "bilibili-landscape" 不在 targetPresets 内（当前：douyin-portrait）/);
 });
 
-// --validate-only 指定 --preset 时只报告该预设。
-test('--validate-only 指定 --preset 时只校验该预设', () => {
+// --validate-only 的承诺是「用同一份候选布局同时校验全部目标预设」：
+// --preset 只决定出片预设，不影响校验范围（指定它也要校验两个）。
+test('--validate-only 指定 --preset 时仍校验全部目标预设', () => {
   const { code, stdout } = runCli([
     '--project', VALID_PROJECT_PATH,
     '--preset', 'bilibili-landscape',
@@ -74,6 +76,49 @@ test('--validate-only 指定 --preset 时只校验该预设', () => {
   ]);
 
   assert.equal(code, 0);
+  assert.match(stdout, /douyin-portrait/);
   assert.match(stdout, /bilibili-landscape/);
-  assert.doesNotMatch(stdout, /douyin-portrait/);
+  assert.match(stdout, /联合校验通过：douyin-portrait、bilibili-landscape/);
+});
+
+// 配置错误（这里缺 sourceVideo）必须是退出码 2 + 可照着改的中文错误，不能漏成栈回溯。
+for (const [label, mutate, expected] of [
+  ['缺 sourceVideo', (project) => { delete project.sourceVideo; }, /sourceVideo\.path 缺失/],
+  ['sourceVideo 不是对象', (project) => { project.sourceVideo = './assets/run.mp4'; }, /sourceVideo 必须是对象/],
+  ['sourceVideo.path 为空', (project) => { project.sourceVideo = { path: '' }; }, /sourceVideo\.path 缺失/],
+]) {
+  test(`${label} 时退出码 2，错误点名 sourceVideo 且不打印栈回溯`, () => {
+    const file = brokenProject(mutate);
+
+    const { code, stderr } = runCli([
+      '--project', file,
+      '--preset', 'douyin-portrait',
+      '--dry-run',
+    ]);
+
+    assert.equal(code, 2);
+    assert.match(stderr, expected);
+    assert.doesNotMatch(stderr, /\n\s+at /, '配置错误不应暴露栈回溯');
+  });
+}
+
+// 共享绘制层抛普通 Error（例如卡片放不下）也要在 CLI 边界收口成退出码 2。
+test('绘制期普通 Error（卡片容不下）在 CLI 边界转成退出码 2 并给中文提示', () => {
+  const file = projectWithVideo(
+    makeVideo({ key: 'portrait', width: 1080, height: 1920 }),
+    (project) => {
+      // 一行格位（40 px）放不下数据卡；联合校验仍然通过，失败点在绘制计划里。
+      project.layout.components.find((item) => item.id === 'metrics').rowSpan = 1;
+    },
+  );
+
+  const { code, stderr } = runCli([
+    '--project', file,
+    '--preset', 'douyin-portrait',
+    '--dry-run',
+  ]);
+
+  assert.equal(code, 2);
+  assert.match(stderr, /错误：组件 metrics 的矩形高 40 px 容不下 3 行数据卡/);
+  assert.doesNotMatch(stderr, /\n\s+at /, '绘制期错误不应暴露栈回溯');
 });
