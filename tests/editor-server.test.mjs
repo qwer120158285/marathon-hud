@@ -6,7 +6,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -112,6 +112,36 @@ test('PUT 合法配置落盘，并且能被 CLI 的 Schema 校验通过', async 
 
     const reloaded = await (await fetch(apiUrl(server, 'path=project.json'))).json();
     assert.deepEqual(reloaded.project.layout.components, project.layout.components);
+    // 原子写入：临时文件必须被 rename 掉，不能留在目录里。
+    assert.deepEqual(readdirSync(root).filter((name) => name.includes('.tmp-')), []);
+  });
+});
+
+// 保存布局时要同时检查全部目标预设（母票「只要有一个越界就拒绝保存」）：
+// 竖屏合法、横屏越界的候选布局必须 422，并且错误文本带预设 / 组件 / 越界量。
+test('PUT 横屏越界的配置返回 422、点名预设与越界量，且不覆盖磁盘文件', async (t) => {
+  const root = tempRoot(t);
+  const overflow = readFileSync(
+    path.join(FIXTURES, 'project.landscape-overflow.json'),
+    'utf8',
+  );
+  await withServer(t, { root }, async (server) => {
+    const response = await fetch(apiUrl(server, 'path=project.json'), {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: overflow,
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 422);
+    assert.equal(body.ok, false);
+    assert.ok(
+      body.errors.some((error) => /画布预设 bilibili-landscape：组件 metrics 超出安全区/.test(error)
+        && /越界 \d+(?:\.\d+)? px/.test(error)),
+      `错误列表应点名横屏预设、metrics 与越界量，实际：${JSON.stringify(body.errors)}`,
+    );
+    assert.equal(readFileSync(path.join(root, 'project.json'), 'utf8'), VALID_PROJECT);
+    assert.deepEqual(readdirSync(root).filter((name) => name.includes('.tmp-')), []);
   });
 });
 
