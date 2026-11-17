@@ -105,8 +105,8 @@ class Cdp {
   }
 }
 
-/** 启动 headless Chrome 并连上浏览器级 WebSocket。 */
-async function launchChrome({ chrome, profileDir }) {
+/** 启动 headless Chrome 并连上浏览器级 WebSocket。编辑器冒烟测试复用这套启动逻辑。 */
+export async function launchChrome({ chrome, profileDir }) {
   const child = spawn(chrome, [
     '--headless',
     '--disable-gpu',

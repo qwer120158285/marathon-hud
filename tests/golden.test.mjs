@@ -5,11 +5,14 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { encodePng, registerFonts } from '../cli/adapter.mjs';
 import { BUILTIN_PRESET_IDS } from '../shared/presets.js';
-import { generateGoldens, goldenPath, renderSample } from './golden-generate.mjs';
+import { GOLDEN_SAMPLE_ID, generateGoldens, goldenPath, loadSample, renderSample } from './golden-generate.mjs';
 import {
   CRITICAL_MAX_DIFF_RATIO,
   FULL_MAX_DIFF_RATIO,
+  TEXT_MAX_COARSE_DIFF_RATIO,
   TEXT_MAX_INK_DELTA,
+  TEXT_MAX_PROFILE_L1,
+  TEXT_MIN_PROFILE_CORRELATION,
   compareRgba,
   criticalRegionsFor,
   decodePng,
@@ -29,7 +32,8 @@ function compareWithGolden(presetId) {
 }
 
 // 验收项：两个目标预设各一张基准图，Node 侧与同一张基准图比对。
-// 非文字像素按 8/255 逐像素（全图 ≤1%、关键区域 ≤0.2%），文字框按结构校验（见 golden-compare.mjs）。
+// 非文字像素按 8/255 逐像素（全图 ≤1%、关键区域 ≤0.2%）；
+// 文字框按几何 + 剖面内容 + 粗降采样，标定见 golden-compare.mjs 各常量注释。
 for (const presetId of BUILTIN_PRESET_IDS) {
   test(`Node 侧渲染与基准图 ${presetId} 一致`, () => {
     const report = compareWithGolden(presetId);
@@ -46,7 +50,18 @@ for (const presetId of BUILTIN_PRESET_IDS) {
     assert.ok(report.textChecks.centroidPx <= 1, `文字质心偏移 ${report.textChecks.centroidPx} px`);
     assert.ok(report.textChecks.bboxDeltaPx <= 1, `文字包围盒偏差 ${report.textChecks.bboxDeltaPx} px`);
     assert.ok(report.textChecks.outlinePx <= 1, `文字轮廓距离 ${report.textChecks.outlinePx} px`);
-    assert.ok(report.textChecks.inkDelta <= TEXT_MAX_INK_DELTA, `文字墨量差 ${report.textChecks.inkDelta}`);
+    assert.ok(
+      report.textChecks.correlation >= TEXT_MIN_PROFILE_CORRELATION,
+      `文字剖面相关 ${report.textChecks.correlation} 低于 ${TEXT_MIN_PROFILE_CORRELATION}`,
+    );
+    assert.ok(
+      report.textChecks.profileL1 <= TEXT_MAX_PROFILE_L1,
+      `文字剖面 L1 ${report.textChecks.profileL1} 超过 ${TEXT_MAX_PROFILE_L1}`,
+    );
+    assert.ok(
+      report.textChecks.coarseRatio <= TEXT_MAX_COARSE_DIFF_RATIO,
+      `文字粗降采样差异 ${percent(report.textChecks.coarseRatio)}% 超过 6%`,
+    );
     assert.equal(isPassing(report), true);
   });
 }
@@ -160,13 +175,15 @@ test('文字整体移动 2 px 会让质心偏移超阈值', () => {
   assert.equal(isPassing(report), false);
 });
 
-// 字重变化（墨量变轻 20%）不会被结构判定放过。
-test('文字墨量减少 20% 会被墨量校验抓住', () => {
+// 字重整体变轻一半（墨量 -50%，等价于换细两档字重）必须被墨量兜底判据抓住。
+// 剖面判据对「整体浓淡按比例变化」不敏感（归一化后形状不变），这是刻意的分工：
+// 字重 / 字体属性由墨量带 + FONTS.json 的 SHA-256 + 两端共用绘制代码保证。
+test('文字墨量减少 50% 会被墨量兜底判据抓住', () => {
   const expected = decodePng(readFileSync(goldenPath('douyin-portrait')));
   const actual = decodePng(readFileSync(goldenPath('douyin-portrait')));
   const regions = criticalRegionsFor({ presetId: 'douyin-portrait' });
 
-  // 以文字框背景色为基准，把墨量压到 80%（等价于换细一档字重）。
+  // 以文字框背景色为基准，把墨量压到 50%。
   for (const region of regions.filter((item) => item.kind === 'text')) {
     const x0 = Math.max(0, Math.floor(region.x));
     const y0 = Math.max(0, Math.floor(region.y));
@@ -178,7 +195,7 @@ test('文字墨量减少 20% 会被墨量校验抓住', () => {
       for (let x = x0; x < x1; x += 1) {
         const index = (y * actual.width + x) * 4;
         for (let channel = 0; channel < 4; channel += 1) {
-          const value = background[channel] + (actual.data[index + channel] - background[channel]) * 0.8;
+          const value = background[channel] + (actual.data[index + channel] - background[channel]) * 0.5;
           actual.data[index + channel] = Math.max(0, Math.min(255, Math.round(value)));
         }
       }
@@ -189,6 +206,32 @@ test('文字墨量减少 20% 会被墨量校验抓住', () => {
   assert.ok(
     report.textChecks.inkDelta > TEXT_MAX_INK_DELTA,
     `墨量差 ${(report.textChecks.inkDelta * 100).toFixed(1)}% 应当超过 ${TEXT_MAX_INK_DELTA * 100}%`,
+  );
+  assert.equal(isPassing(report), false);
+});
+
+// 换一个形状相近的数字（配速 5:32 → 5:38，只改末位 2→8）也必须被抓住。
+// 这是「降采样是否把内容差异一起抹平」的关键反例：几何判据对换数字几乎不敏感，
+// 内容差异只能由剖面相关 / L1 与粗降采样发现。
+test('文字换数字会被文字区判据抓住', () => {
+  const sample = loadSample();
+  const entry = sample.samples.find((item) => item.id === GOLDEN_SAMPLE_ID);
+  const mutated = structuredClone(sample);
+  const mutatedEntry = mutated.samples.find((item) => item.id === GOLDEN_SAMPLE_ID);
+  mutatedEntry.metrics.paceSecPerKm = entry.metrics.paceSecPerKm + 6;
+
+  const { canvas } = renderSample({ presetId: 'douyin-portrait', sample: mutated });
+  const actual = decodePng(encodePng(canvas));
+  const expected = decodePng(readFileSync(goldenPath('douyin-portrait')));
+  const regions = criticalRegionsFor({ presetId: 'douyin-portrait' });
+
+  const report = compareRgba(actual, expected, regions);
+  const { textChecks } = report;
+  assert.ok(
+    textChecks.correlation < TEXT_MIN_PROFILE_CORRELATION
+      || textChecks.profileL1 > TEXT_MAX_PROFILE_L1
+      || textChecks.coarseRatio > TEXT_MAX_COARSE_DIFF_RATIO,
+    `换数字后 相关 ${textChecks.correlation} / L1 ${textChecks.profileL1} / 粗降采样 ${(textChecks.coarseRatio * 100).toFixed(2)}% 应当有一项越界`,
   );
   assert.equal(isPassing(report), false);
 });

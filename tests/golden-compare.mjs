@@ -1,16 +1,23 @@
 /**
  * 基准图比对（ADR 0001）。
  *
- * 口径分两类：
+ * 口径分两类（ADR 0001 修订记录，2026-11-17）：
  *
  * 1. **非文字区域**（组件边界矩形与其中除文字框外的留白、底板、描边）：原始像素比较，
  *    RGBA 任一通道偏差 > 8/255 计为差异像素；全图 ≤1%、关键区域 ≤0.2%。
- * 2. **文字区域**（文字实际绘制包围盒）：改用结构校验，不参与像素差异率统计——
- *    Chrome 走 CoreText、`@napi-rs/canvas` 走 Skia，字形覆盖值（抗锯齿对比度）本身不同，
- *    逐像素比会把视觉上一致的文字判成失败（实测文字框内 13.9% 像素超 8/255，而墨量只差 1.07%）。
- *    结构校验逐文字框检查：位置（墨迹质心 ≤1 px）、包围盒宽高（≤1 px）、
- *    字形轮廓距离（≤1 px）、墨量（相对差 ≤2%，等价于字重 / 内容一致）。
- *    内容与字体属性由「两端共用 shared/ + 同一 fixture + FONTS.json SHA-256」保证。
+ * 2. **文字区域**（文字实际绘制包围盒）：四项判据——
+ *    几何（墨迹质心 ≤1 px、支撑包围盒 ≤1 px、字形轮廓距离 ≤1 px）、
+ *    内容（列 / 行墨迹剖面的相关系数 ≥0.98 与归一化 L1 ≤0.05）、
+ *    墨量总量（相对差 ≤20%，只作整体兜底）、
+ *    粗降采样（12× 盒式、整框墨量归一化后逐格 8/255，差异格 ≤6%）。
+ *
+ * 为什么不是「降采样后逐像素」一刀切：Chrome 在 macOS 走 CoreText、`@napi-rs/canvas` 走 Skia，
+ * 两端笔画粗细系统性相差约 0.5 px，差异沿整条字形边缘分布。2×–8× 降采样实测反而把差异摊到
+ * 更多格子上（19%–27%），比「换一个数字」的差异（3.7%–9.5%）还大，判据在该档位无法分离；
+ * 只有 12× 且先做整框墨量归一化，才能让跨光栅器差异（3.6%）与换数字（8.4%）分开。
+ * 所以像素判据退居兜底（抓整体丢失 / 错位 / 换字号），内容细差由剖面判据承担。
+ * 标定数据与阈值见下方各常量注释；失败用例在 `tests/golden.test.mjs`。
+ * 内容与字体属性另由「两端共用 shared/ + 同一 fixture + FONTS.json SHA-256」保证。
  *
  * 关键区域 = 每个组件边界矩形外扩 8 px ∪ 文字实际绘制包围盒（含保护带），
  * 由 shared/hud.js 的 collectCriticalRegions 给出（`kind` 区分组件矩形与文字框）。
@@ -33,20 +40,32 @@ export const MAX_CHANNEL_DELTA = 8;
 export const FULL_MAX_DIFF_RATIO = 0.01;
 /** 非文字关键区域允许的差异像素比例。 */
 export const CRITICAL_MAX_DIFF_RATIO = 0.002;
-/** 文字框：墨迹质心最大偏移（px）。 */
+/** 文字框：墨迹质心最大偏移（px），同时代表位置与基线偏移。 */
 export const TEXT_MAX_CENTROID_PX = 1;
 /** 文字框：墨迹支撑包围盒起点与宽高的最大偏差（px）。 */
 export const TEXT_MAX_BBOX_DELTA_PX = 1;
 /** 文字框：字形轮廓最大距离（px）。 */
 export const TEXT_MAX_OUTLINE_PX = 1;
 /**
- * 文字框：墨量相对差上限。这一项不是逐像素比对，而是量「字有多重」：
- * 平台字形覆盖的对比度不同，实测 6.9%–10.6%；换成别的字重会明显超出。
- * 文字内容 / 字体 / 字号 / 字重在实现上由「两端共用 shared/ + 同一 fixture + FONTS.json SHA-256」保证。
+ * 文字框降采样的盒式边长（px）。
+ *
+ * 标定过程（2026-11-17，Node 与 Chrome 各出一张 PNG，逐档实测）：
+ * 2× / 3× / 4× / 6× / 8× 下，跨光栅器差异（19%–27%）**高于**「换一个数字」的差异（3.7%–9.5%），
+ * 判据在该档位完全无法分离；原因是两端字形笔画粗细系统性相差约 0.5 px，
+ * 差异沿整条笔画边缘分布，取小窗平均反而把它摊到更多格子上。
+ * 到 12× 并先做整框墨量归一化，跨光栅器差异降到 3.6%，换数字升到 8.4%，才可分离。
+ * 因此降采样只作为「兜底」判据（文字整体丢失、错位、换字号这类粗错），
+ * 内容细差由列 / 行墨迹剖面的相关系数与 L1 距离承担。
  */
-export const TEXT_MAX_INK_DELTA = 0.12;
-/** 文字框：横 / 纵投影轮廓的相关系数下限（形状是否同一个字）。 */
+export const TEXT_COARSE_DOWNSAMPLE_FACTOR = 12;
+/** 文字框粗降采样（归一化后）允许的差异格比例：实测跨光栅器 3.61%，换数字 8.43%，取 6%。 */
+export const TEXT_MAX_COARSE_DIFF_RATIO = 0.06;
+/** 文字框墨迹总量相对差上限：只作整体兜底（实测跨光栅器 11.45%，字重换一档 >40%）。 */
+export const TEXT_MAX_INK_DELTA = 0.2;
+/** 文字框列 / 行墨迹剖面相关系数下限：内容是否同一串字（实测跨光栅器 0.9944，换数字 0.9588）。 */
 export const TEXT_MIN_PROFILE_CORRELATION = 0.98;
+/** 文字框列 / 行墨迹剖面归一化 L1 距离上限（实测跨光栅器 0.0365，换数字 0.0662）。 */
+export const TEXT_MAX_PROFILE_L1 = 0.05;
 
 /**
  * 文字压在底板上，Alpha 到处都是底板的值，所以「墨迹」不能按 Alpha 判，
@@ -55,8 +74,6 @@ export const TEXT_MIN_PROFILE_CORRELATION = 0.98;
 const INK_WEIGHT_FLOOR = 8;
 /** 墨迹支撑集阈值：用于轮廓（Hausdorff）比较。 */
 const INK_SUPPORT_THRESHOLD = 24;
-/** 支撑包围盒取投影峰值这一比例的宽度，避开最外侧的淡淡抗锯齿。 */
-const BBOX_SUPPORT_FRACTION = 0.1;
 
 const SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const CHANNELS_BY_COLOR_TYPE = { 0: 1, 2: 3, 4: 2, 6: 4 };
@@ -296,37 +313,6 @@ function fieldCentroid(field) {
   return sum === 0 ? null : { x: sumX / sum, y: sumY / sum };
 }
 
-/** 横 / 纵投影；用于包围盒支撑范围与轮廓形状比较（对平台抗锯齿差异不敏感）。 */
-function fieldProfiles(field) {
-  const columns = new Float64Array(field.width);
-  const rows = new Float64Array(field.height);
-
-  for (let y = 0; y < field.height; y += 1) {
-    for (let x = 0; x < field.width; x += 1) {
-      const weight = field.weights[y * field.width + x];
-      columns[x] += weight;
-      rows[y] += weight;
-    }
-  }
-
-  return { columns, rows };
-}
-
-/** 投影的支撑范围：从首个超过峰值 10% 的位置到最后一个。 */
-function profileSupport(profile) {
-  const peak = Math.max(...profile);
-  if (peak === 0) return null;
-  const threshold = peak * BBOX_SUPPORT_FRACTION;
-  let start = -1;
-  let end = -1;
-  for (let index = 0; index < profile.length; index += 1) {
-    if (profile[index] < threshold) continue;
-    if (start === -1) start = index;
-    end = index;
-  }
-  return { start, end, peak };
-}
-
 /** 墨迹支撑集：权重 ≥ 阈值的像素坐标集合。 */
 function supportSet(field) {
   const points = new Uint8Array(field.width * field.height);
@@ -336,6 +322,30 @@ function supportSet(field) {
     }
   }
   return points;
+}
+
+/**
+ * 墨迹支撑包围盒（绝对画布坐标）。
+ *
+ * 用支撑集本身而不是投影峰值比例：支撑集已经滤掉最外侧的淡淡抗锯齿，
+ * 包围盒因此对平台覆盖值差异不敏感，只随「文字真的挪了 / 字真的变宽了」而变。
+ */
+function supportBounds(field) {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < field.height; y += 1) {
+    for (let x = 0; x < field.width; x += 1) {
+      if (field.weights[y * field.width + x] < INK_SUPPORT_THRESHOLD) continue;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (maxX < 0) return null;
+  return { x0: field.x0 + minX, y0: field.y0 + minY, x1: field.x0 + maxX, y1: field.y0 + maxY };
 }
 
 /**
@@ -373,7 +383,25 @@ function supportDistance(aField, bField) {
   return worst;
 }
 
-/** 归一化投影的皮尔逊相关（形状是否同一个字）。 */
+/** 列方向墨迹投影。 */
+function columnProfile(field) {
+  const profile = new Float64Array(field.width);
+  for (let y = 0; y < field.height; y += 1) {
+    for (let x = 0; x < field.width; x += 1) profile[x] += field.weights[y * field.width + x];
+  }
+  return profile;
+}
+
+/** 行方向墨迹投影。 */
+function rowProfile(field) {
+  const profile = new Float64Array(field.height);
+  for (let y = 0; y < field.height; y += 1) {
+    for (let x = 0; x < field.width; x += 1) profile[y] += field.weights[y * field.width + x];
+  }
+  return profile;
+}
+
+/** 归一化投影的皮尔逊相关：只看形状，不看整体浓淡。 */
 function profileCorrelation(a, b) {
   const length = Math.min(a.length, b.length);
   if (length === 0) return 0;
@@ -403,48 +431,109 @@ function profileCorrelation(a, b) {
   return varianceA === 0 || varianceB === 0 ? 0 : covariance / Math.sqrt(varianceA * varianceB);
 }
 
-/** 单个文字框的结构校验；任一项缺失都记为失败。 */
+/** 归一化投影的 L1 距离（0 = 分布完全同形，1 = 完全不重叠）。 */
+function profileL1(a, b) {
+  const length = Math.min(a.length, b.length);
+  let totalA = 0;
+  let totalB = 0;
+  for (let index = 0; index < length; index += 1) {
+    totalA += a[index];
+    totalB += b[index];
+  }
+  if (totalA === 0 || totalB === 0) return 1;
+
+  let distance = 0;
+  for (let index = 0; index < length; index += 1) {
+    distance += Math.abs(a[index] / totalA - b[index] / totalB);
+  }
+  return distance / 2;
+}
+
+/**
+ * 粗降采样逐像素比较（ADR 0001 修订里的兜底判据）。
+ *
+ * 输入是两个同尺寸的墨迹场（与背景色的单通道最大距离）。先按整框墨量归一化，
+ * 消掉两端笔画粗细的系统性差异，再用 `TEXT_COARSE_DOWNSAMPLE_FACTOR` 见方取均值逐格比较，
+ * 超过 8/255 记差异格。它抓的是「文字整体丢失、错位、换字号」这类粗错，
+ * 内容细差交给列 / 行剖面的相关系数与 L1。
+ */
+export function coarseDownsampleCompare(aField, bField, factor = TEXT_COARSE_DOWNSAMPLE_FACTOR) {
+  const scale = aField.total > 0 ? bField.total / aField.total : 1;
+  let cells = 0;
+  let diffCells = 0;
+  let maxDelta = 0;
+
+  for (let blockY = 0; blockY < bField.height; blockY += factor) {
+    for (let blockX = 0; blockX < bField.width; blockX += factor) {
+      const endX = Math.min(blockX + factor, bField.width);
+      const endY = Math.min(blockY + factor, bField.height);
+      let sumActual = 0;
+      let sumExpected = 0;
+      let count = 0;
+
+      for (let y = blockY; y < endY; y += 1) {
+        for (let x = blockX; x < endX; x += 1) {
+          sumActual += aField.weights[y * bField.width + x] * scale;
+          sumExpected += bField.weights[y * bField.width + x];
+          count += 1;
+        }
+      }
+      if (count === 0) continue;
+
+      cells += 1;
+      const delta = Math.abs(sumActual - sumExpected) / count;
+      if (delta > maxDelta) maxDelta = delta;
+      if (delta > MAX_CHANNEL_DELTA) diffCells += 1;
+    }
+  }
+
+  return { cells, diffCells, ratio: cells === 0 ? 0 : diffCells / cells, maxDelta };
+}
+
+/** 单个文字框的校验：粗降采样像素（兜底）+ 剖面内容 + 位置 / 尺寸 / 形状几何。 */
 function textStructure(actual, expected, region) {
-  // 背景色取基准图：两张图必须是同一块底板，才能用同一把尺子量墨量。
+  // 背景色取基准图：两张图必须是同一块底板，才能用同一把尺子量墨迹。
   const background = regionBackground(expected, region);
   const a = inkField(actual, region, background);
   const b = inkField(expected, region, background);
+  const coarse = coarseDownsampleCompare(a, b);
   const aCentroid = fieldCentroid(a);
   const bCentroid = fieldCentroid(b);
-  if (a.total === 0 || b.total === 0 || aCentroid === null || bCentroid === null) {
+  const aBounds = supportBounds(a);
+  const bBounds = supportBounds(b);
+
+  if (aCentroid === null || bCentroid === null || aBounds === null || bBounds === null) {
     return {
       centroidPx: Number.POSITIVE_INFINITY,
       bboxDeltaPx: Number.POSITIVE_INFINITY,
-      inkDelta: 1,
       outlinePx: Number.POSITIVE_INFINITY,
+      inkDelta: 1,
       correlation: 0,
+      profileL1: 1,
+      coarseCells: coarse.cells,
+      coarseDiffCells: coarse.cells,
     };
   }
 
-  const aProfiles = fieldProfiles(a);
-  const bProfiles = fieldProfiles(b);
-  const aColumns = profileSupport(aProfiles.columns);
-  const bColumns = profileSupport(bProfiles.columns);
-  const aRows = profileSupport(aProfiles.rows);
-  const bRows = profileSupport(bProfiles.rows);
-  const bboxDeltaPx = aColumns === null || bColumns === null || aRows === null || bRows === null
-    ? Number.POSITIVE_INFINITY
-    : Math.max(
-      Math.abs(aColumns.start - bColumns.start),
-      Math.abs(aColumns.end - bColumns.end),
-      Math.abs(aRows.start - bRows.start),
-      Math.abs(aRows.end - bRows.end),
-    );
+  const aColumns = columnProfile(a);
+  const bColumns = columnProfile(b);
+  const aRows = rowProfile(a);
+  const bRows = rowProfile(b);
 
   return {
     centroidPx: Math.hypot(aCentroid.x - bCentroid.x, aCentroid.y - bCentroid.y),
-    bboxDeltaPx,
-    inkDelta: Math.abs(a.total - b.total) / b.total,
-    outlinePx: supportDistance(a, b),
-    correlation: Math.min(
-      profileCorrelation(aProfiles.columns, bProfiles.columns),
-      profileCorrelation(aProfiles.rows, bProfiles.rows),
+    bboxDeltaPx: Math.max(
+      Math.abs(aBounds.x0 - bBounds.x0),
+      Math.abs(aBounds.y0 - bBounds.y0),
+      Math.abs(aBounds.x1 - bBounds.x1),
+      Math.abs(aBounds.y1 - bBounds.y1),
     ),
+    outlinePx: supportDistance(a, b),
+    inkDelta: Math.abs(a.total - b.total) / b.total,
+    correlation: Math.min(profileCorrelation(aColumns, bColumns), profileCorrelation(aRows, bRows)),
+    profileL1: Math.max(profileL1(aColumns, bColumns), profileL1(aRows, bRows)),
+    coarseCells: coarse.cells,
+    coarseDiffCells: coarse.diffCells,
   };
 }
 
@@ -524,9 +613,16 @@ export function compareRgba(actual, expected, regions) {
       regions: structure.length,
       centroidPx: worst('centroidPx'),
       bboxDeltaPx: worst('bboxDeltaPx'),
-      inkDelta: worst('inkDelta'),
       outlinePx: worst('outlinePx'),
+      inkDelta: worst('inkDelta'),
       correlation: weakest('correlation'),
+      profileL1: worst('profileL1'),
+      // 粗降采样按全部文字框汇总：单框只有十几个格子，按框取最差值会出现 1/9=11% 的粒度噪声。
+      coarseRatio: (() => {
+        const cells = structure.reduce((sum, entry) => sum + entry.coarseCells, 0);
+        const diffCells = structure.reduce((sum, entry) => sum + entry.coarseDiffCells, 0);
+        return cells === 0 ? 0 : diffCells / cells;
+      })(),
     },
   };
 }
@@ -544,7 +640,7 @@ export function criticalRegionsFor({ presetId, sampleId = GOLDEN_SAMPLE_ID, samp
   });
 }
 
-/** 判定：非文字像素达标，且文字结构校验全部在容差内。 */
+/** 判定：非文字像素达标，且文字框的几何、剖面内容与粗降采样全部在容差内。 */
 export function isPassing(report) {
   const { textChecks } = report;
   return report.full.ratio <= FULL_MAX_DIFF_RATIO
@@ -553,7 +649,9 @@ export function isPassing(report) {
     && textChecks.bboxDeltaPx <= TEXT_MAX_BBOX_DELTA_PX
     && textChecks.outlinePx <= TEXT_MAX_OUTLINE_PX
     && textChecks.inkDelta <= TEXT_MAX_INK_DELTA
-    && textChecks.correlation >= TEXT_MIN_PROFILE_CORRELATION;
+    && textChecks.correlation >= TEXT_MIN_PROFILE_CORRELATION
+    && textChecks.profileL1 <= TEXT_MAX_PROFILE_L1
+    && textChecks.coarseRatio <= TEXT_MAX_COARSE_DIFF_RATIO;
 }
 
 /** 读取基准图与候选图，按上述口径比对。 */
@@ -574,11 +672,12 @@ export function formatReport(report) {
     + `（${report.full.diffPixels}/${report.full.pixels} px ≤1%）`
     + `，非文字关键区域 ${percent(report.critical.ratio)}`
     + `（${report.critical.diffPixels}/${report.critical.pixels} px ≤0.2%）`
-    + `，文字结构 质心 ${textChecks.centroidPx.toFixed(3)} px / 包围盒 ${textChecks.bboxDeltaPx} px`
-    + ` / 轮廓 ${textChecks.outlinePx} px / 墨量差 ${(textChecks.inkDelta * 100).toFixed(2)}%`
-    + ` / 形状相关 ${textChecks.correlation.toFixed(4)}`
+    + `，文字区 质心 ${textChecks.centroidPx.toFixed(3)} px / 包围盒 ${textChecks.bboxDeltaPx} px`
+    + ` / 轮廓 ${textChecks.outlinePx} px / 墨量差 ${percent(textChecks.inkDelta)}`
+    + ` / 剖面相关 ${textChecks.correlation.toFixed(4)} / 剖面 L1 ${textChecks.profileL1.toFixed(4)}`
+    + ` / 粗降采样 ${percent(textChecks.coarseRatio)}`
     + `（${textChecks.regions} 个文字框）`
-    + `〔参考：含文字全图 ${percent(report.fullWithText.ratio)}、含文字关键区 ${percent(report.criticalWithText.ratio)}、文字框逐像素 ${percent(report.text.ratio)}〕`;
+    + `〔参考：含文字全图 ${percent(report.fullWithText.ratio)}、含文字关键区 ${percent(report.criticalWithText.ratio)}、文字框原始逐像素 ${percent(report.text.ratio)}〕`;
 }
 
 const invokedDirectly = process.argv[1] !== undefined

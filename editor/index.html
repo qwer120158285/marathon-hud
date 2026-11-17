@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>马拉松 HUD 编辑器</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/editor/editor.css">
+</head>
+<body data-console-errors="0" data-editor-ready="false">
+<header class="topbar">
+  <div class="title-block">
+    <h1>马拉松 HUD 编辑器</h1>
+    <p class="hint">拖动按格位吸附，Resize 按整数格；保存前对全部目标预设执行联合校验。</p>
+  </div>
+  <div class="preset-bar">
+    <label class="preset-chip source">
+      <span class="chip-label">编辑预设</span>
+      <select id="source-preset" aria-label="编辑预设"></select>
+    </label>
+    <div class="preset-chip target">
+      <span class="chip-label">目标预设</span>
+      <ul id="target-presets" class="chip-list"></ul>
+    </div>
+  </div>
+</header>
+
+<main class="workspace">
+  <aside class="sidebar">
+    <section class="panel">
+      <h2>项目配置</h2>
+      <div class="row">
+        <input id="project-path" type="text" value="project.json" spellcheck="false" aria-label="项目配置路径">
+        <button id="load" type="button">载入</button>
+      </div>
+      <p class="hint" id="project-meta">尚未载入</p>
+      <div class="row row-between">
+        <label class="toggle"><input id="grid-toggle" type="checkbox" checked> 显示网格线</label>
+        <button id="save" type="button" class="primary">保存</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>组件</h2>
+      <ul id="component-list" class="component-list"></ul>
+      <p class="hint">预览由 shared/hud.js 的 drawFrame 实时输出；尚未实现绘制的组件只显示边框。</p>
+    </section>
+
+    <section class="panel">
+      <h2>联合校验</h2>
+      <div id="validation-summary" class="summary">尚未载入</div>
+      <ul id="warnings" class="message-list"></ul>
+      <ul id="errors" class="message-list error"></ul>
+    </section>
+  </aside>
+
+  <section class="stage" id="stage">
+    <div class="canvas-wrap" id="canvas-wrap">
+      <canvas id="preview"></canvas>
+    </div>
+    <div class="readout" id="readout"></div>
+  </section>
+</main>
+
+<div id="console-errors" hidden></div>
+<script type="module" src="/editor/editor.js"></script>
+</body>
+</html>

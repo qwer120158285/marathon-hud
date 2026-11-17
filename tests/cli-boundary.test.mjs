@@ -36,16 +36,18 @@ test('--dry-run 多目标预设未指定 --preset 时退出码 2', () => {
   );
 });
 
-// 本版本只实现 --validate-only；出片路径必须明确报「未实现」而不是静默成功。
-test('--dry-run 指定 --preset 后明确报本版本未实现，退出码 2', () => {
+// #6 起 --dry-run 有真实行为（校验 + 出帧）；完整渲染仍由后续 ticket 提供。
+// 这里只验「不再报 --dry-run 未实现」，校验细节见 tests/export-validation.test.mjs。
+test('--dry-run 不再报未实现：源视频缺失时按数据源缺失退出码 4', () => {
   const { code, stderr } = runCli([
     '--project', VALID_PROJECT_PATH,
     '--preset', 'douyin-portrait',
     '--dry-run',
   ]);
 
-  assert.equal(code, 2);
-  assert.match(stderr, /本版本尚未实现出片流程.*请使用 --validate-only/);
+  assert.equal(code, 4);
+  assert.doesNotMatch(stderr, /本版本尚未实现出片流程/);
+  assert.match(stderr, /\[ffprobe\] 无法读取源视频/);
 });
 
 test('--preset 不在 targetPresets 内时退出码 2', () => {
