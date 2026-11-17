@@ -63,7 +63,8 @@ npm install     # 只装一个运行时依赖 @napi-rs/canvas
 
 **为什么有两个 project 文件**：工具不做 scale / crop / pad（ADR 0003），源视频画幅必须与目标画布一致。
 竖屏素材配 `project.json`（`targetPresets` 同时列出两个预设，用同一份布局跑联合校验），
-横屏素材配 `project.landscape.json`（布局按横屏安全区摆放）。两份配置引用同一条 TCX 与同一份天气快照。
+横屏素材配 `project.landscape.json`（布局按横屏安全区摆放）。两份配置引用同一条 TCX 与同一份天气快照
+（快照由 `npm run weather -- --project project.json` 真实取数后写入；同一活动、同一坐标，取数结果相同）。
 
 ## 用法
 
@@ -141,7 +142,8 @@ npm run weather -- --project project.json
 
 ```bash
 npm test                     # node --test：单元 + 进程边界 + 端到端出片
-npm run accept:video         # 两预设成片验收（缺成片会先出片）；--check 只验收
+npm run accept:video         # 两预设成片验收（缺成片会先出片）
+npm run accept:video -- --check   # 只验收，不出片
 npm run accept:golden        # 两预设 × Node / 浏览器 两端基准图比对
 npm run golden:generate      # 重新生成基准图（改了绘制或字体版本后才需要）
 npm run golden:browser       # 只跑浏览器侧基准图比对
