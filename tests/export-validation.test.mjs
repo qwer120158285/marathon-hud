@@ -8,7 +8,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -249,15 +249,22 @@ test('--validate-only 不探测源视频：视频不存在也照样通过', () =
   assert.doesNotMatch(stderr, /ffprobe/);
 });
 
-// 出片路径本身仍由后续 ticket 提供，但必须明确报未实现而不是静默成功。
-test('未加 --dry-run 的完整渲染明确报本版本未实现，退出码 2', () => {
+// `--dry-run` 的边界：跑完校验与出帧就停，不启动 FFmpeg、不写成片（合成见 e2e-render.test.mjs）。
+test('--dry-run 不启动 FFmpeg，也不写出成片', () => {
   const file = projectWithVideo(makeVideo({ key: 'portrait', width: 1080, height: 1920 }));
 
-  const { code, stderr } = runCli([
+  const { code, stdout, stderr } = runCli([
     '--project', file,
     '--preset', 'douyin-portrait',
+    '--dry-run',
   ]);
 
-  assert.equal(code, 2);
-  assert.match(stderr, /本版本尚未实现完整渲染/);
+  assert.equal(code, 0, stderr);
+  assert.match(stdout, /未启动 FFmpeg/);
+  // fixture 的 output.path 是 ./out/final.mp4。
+  assert.equal(
+    existsSync(path.join(path.dirname(file), 'out', 'final.mp4')),
+    false,
+    '--dry-run 不应产生成片文件',
+  );
 });

@@ -6,7 +6,8 @@
  * 渲染快慢不改变运动数据时间（ADR 0006）。
  *
  * 进程内只持有 1–2 帧：动画帧画布复用同一张，取出的 RGBA 交给 sink 后即不再持有，
- * 不把帧存进数组。#7 把 sink 换成 FFmpeg 的 stdin 即可，背压挂在 `write` 的返回值上。
+ * 不把帧存进数组。完整渲染时 sink 就是 `cli/ffmpeg.mjs` 的 FFmpeg stdin 包装：
+ * 背压挂在 `write` 的返回值上，`drain()` 会和 FFmpeg 的退出竞争，进程死掉就立刻中止。
  */
 import { createCanvas } from './adapter.mjs';
 import { drawFrame } from '../shared/hud.js';
@@ -39,10 +40,10 @@ export function createCountingSink() {
 /**
  * 跑完整帧循环。
  *
- * `sink.write(buf)` 的返回值约定（#7 的背压接缝）：
+ * `sink.write(buf)` 的返回值约定：
  * - 返回 `true` / `undefined`：已接收，继续下一帧；
  * - 返回 `false`：管道写满，帧循环会 `await sink.drain()` 后再继续；
- * - 返回 Promise：帧循环等它 resolve 后再画下一帧。
+ * - 返回 Promise：帧循环等它 resolve 后再画下一帧（FFmpeg 管道断开会用 reject 提前中止）。
  *
  * @param {{
  *   motion: object, preset: object, fps: number, alignmentOffsetMs?: number,
