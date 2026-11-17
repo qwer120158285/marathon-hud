@@ -42,6 +42,43 @@ export const METRICS_CARD = {
   ascentRatio: 0.78,
 };
 
+/** 路线组件在 1080 短边下的样式。 */
+export const ROUTE = {
+  /** 轨迹到组件矩形四边的内边距。 */
+  padding: 18,
+  /** 完整路线底图（不变，属于静态层）。 */
+  lineWidth: 4,
+  baseColor: 'rgba(255, 255, 255, 0.42)',
+  /** 已完成的一段（每帧变化，属于动态层）。 */
+  doneWidth: 5,
+  doneColor: '#FFFFFF',
+  /** 方向箭头：沿当前行进方向的三角形。 */
+  arrowLength: 18,
+  arrowWidth: 14,
+};
+
+/** 进度组件在 1080 短边下的样式。 */
+export const PROGRESS_CARD = {
+  paddingX: 22,
+  paddingY: 14,
+  /** 公里刻度相对进度条的上下伸出量。 */
+  markerOverhang: 4,
+  markerWidth: 2,
+  markerColor: 'rgba(255, 255, 255, 0.55)',
+  label: { size: 15, weight: 600, lineHeight: 1.4 },
+  value: { size: 38, weight: 700, lineHeight: 1.15 },
+  unit: { size: 15, weight: 500 },
+  /** 数值与「/ 总距离」之间的水平间距。 */
+  valueGap: 8,
+  /** 文字行与进度条之间的留白。 */
+  barGap: 8,
+  barHeight: 10,
+  barRadius: 5,
+  trackColor: 'rgba(255, 255, 255, 0.18)',
+  fillColor: '#FFFFFF',
+  ascentRatio: 0.78,
+};
+
 const round = (value) => Math.round(value);
 
 /**
@@ -70,5 +107,31 @@ export function resolveTheme(preset) {
     value: font(METRICS_CARD.value),
     unit: font(METRICS_CARD.unit),
     ascentRatio: METRICS_CARD.ascentRatio,
+    route: {
+      padding: px(ROUTE.padding),
+      lineWidth: Math.max(1, round(ROUTE.lineWidth * scale)),
+      baseColor: ROUTE.baseColor,
+      doneWidth: Math.max(1, round(ROUTE.doneWidth * scale)),
+      doneColor: ROUTE.doneColor,
+      arrowLength: px(ROUTE.arrowLength),
+      arrowWidth: px(ROUTE.arrowWidth),
+    },
+    progress: {
+      paddingX: px(PROGRESS_CARD.paddingX),
+      paddingY: px(PROGRESS_CARD.paddingY),
+      markerOverhang: px(PROGRESS_CARD.markerOverhang),
+      markerWidth: Math.max(1, round(PROGRESS_CARD.markerWidth * scale)),
+      markerColor: PROGRESS_CARD.markerColor,
+      label: font(PROGRESS_CARD.label),
+      value: font(PROGRESS_CARD.value),
+      unit: font(PROGRESS_CARD.unit),
+      valueGap: px(PROGRESS_CARD.valueGap),
+      barGap: px(PROGRESS_CARD.barGap),
+      barHeight: Math.max(2, round(PROGRESS_CARD.barHeight * scale)),
+      barRadius: px(PROGRESS_CARD.barRadius),
+      trackColor: PROGRESS_CARD.trackColor,
+      fillColor: PROGRESS_CARD.fillColor,
+      ascentRatio: PROGRESS_CARD.ascentRatio,
+    },
   };
 }

@@ -540,6 +540,7 @@ export function criticalRegionsFor({ presetId, sampleId = GOLDEN_SAMPLE_ID, samp
     preset,
     components: sample.layout.components,
     metrics: entry.metrics,
+    activity: sample.activity,
   });
 }
 

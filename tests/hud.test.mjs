@@ -106,17 +106,18 @@ test('配置关闭的组件不进入绘制计划：visible=false 时一行都不
   assert.deepEqual(layer.plan, []);
 });
 
-// 本票只实现 metrics（route / progress / weather 见 #9 / #10），其余 id 必须被跳过。
-test('未实现的组件 id 直接跳过：四类组件里只画 metrics', () => {
+// 本票实现 metrics / route / progress；weather 由 #10 负责，没有绘制条目时必须跳过。
+test('未实现的组件 id 直接跳过：四类组件里只画 route / progress / metrics', () => {
   const preset = resolvePreset('douyin-portrait');
   const { ctx } = createCanvas({ width: preset.width, height: preset.height });
   const layer = prepareStatic(ctx, {
     preset,
     components: sample.layout.components,
     metrics: metricsById('full'),
+    activity: sample.activity,
   });
 
-  assert.deepEqual(layer.plan.map((item) => item.componentId), ['metrics']);
+  assert.deepEqual(layer.plan.map((item) => item.componentId), ['route', 'progress', 'metrics']);
 });
 
 // 验收项：矩形一律来自 shared/layout.js，绘制代码里没有硬编码坐标。

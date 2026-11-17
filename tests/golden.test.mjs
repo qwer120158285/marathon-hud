@@ -125,10 +125,19 @@ test('组件矩形整块移动 1 px 会被非文字像素比对抓住', () => {
   const expected = decodePng(readFileSync(goldenPath('douyin-portrait')));
   const actual = decodePng(readFileSync(goldenPath('douyin-portrait')));
   const regions = criticalRegionsFor({ presetId: 'douyin-portrait' });
-  const component = regions.find((region) => region.kind === 'component');
+  // 路线组件内部大部分是透明区域，1 px 位移本就看不出差异；这条判据用实心底板的数据卡。
+  const component = regions.find((region) => region.kind === 'component' && region.componentId === 'metrics');
 
   // 只平移底板外框（文字框区域本身是均匀底板，不参与逐像素判定）。
-  shiftRegion(actual, { ...component, x: component.x + 8, y: component.y + 8, width: 12, height: component.height - 16 }, 1, 0);
+  // 关键区域现在同时覆盖路线与进度组件，整块平移 1 px 的差异像素占比会被摊薄，
+  // 所以取整条底板宽度而不是一小条竖带，判据仍是「1 px 位移必须被抓住」。
+  shiftRegion(actual, {
+    ...component,
+    x: component.x + 8,
+    y: component.y + 8,
+    width: component.width - 16,
+    height: component.height - 16,
+  }, 1, 0);
 
   const report = compareRgba(actual, expected, regions);
   assert.ok(

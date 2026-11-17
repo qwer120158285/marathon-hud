@@ -45,6 +45,7 @@ export function renderSample({ presetId, sampleId = GOLDEN_SAMPLE_ID, sample = l
     preset,
     components: sample.layout.components,
     metrics: entry.metrics,
+    activity: sample.activity,
   });
 
   drawFrame(ctx, { preset, metrics: entry.metrics, static: layer });
