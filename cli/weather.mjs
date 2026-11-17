@@ -183,4 +183,13 @@ async function main(argv) {
   return EXIT_SUCCESS;
 }
 
-process.exitCode = await main(process.argv.slice(2));
+let exitCode;
+try {
+  exitCode = await main(process.argv.slice(2));
+} catch (error) {
+  // 与 cli/render.mjs 相同的边界口径：未分类异常按配置 / 取数失败退出 2，
+  // 数据源缺失仍退出 4，只打印中文原因，不把栈回溯交给使用者。
+  process.stderr.write(`错误：${error instanceof Error ? error.message : String(error)}\n`);
+  exitCode = error instanceof DataSourceError ? EXIT_DATA_MISSING : EXIT_CONFIG_ERROR;
+}
+process.exitCode = exitCode;
