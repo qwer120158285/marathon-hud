@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>HUD 基准图</title>
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script type="module">
+// 基准图页面：只放一张 canvas，路由与绘制全部走 shared/（ADR 0001）。
+// 通过 ?preset=<id>&sample=<id> 选择画布预设与示意数据样本；字体就绪后才开始绘制。
+import { createCanvas, registerFonts } from './preview.js';
+import { resolvePreset } from '../shared/presets.js';
+import { drawFrame, prepareStatic } from '../shared/hud.js';
+
+const params = new URLSearchParams(location.search);
+const presetId = params.get('preset') ?? 'douyin-portrait';
+const sampleId = params.get('sample') ?? 'full';
+
+const preset = resolvePreset(presetId);
+const sample = await (await fetch('../tests/fixtures/sample.json')).json();
+const entry = sample.samples.find((item) => item.id === sampleId);
+if (entry === undefined) throw new Error(`示意数据里没有样本 ${sampleId}`);
+
+await registerFonts();
+
+const { canvas, ctx } = createCanvas({ width: preset.width, height: preset.height });
+document.body.append(canvas);
+
+const staticLayer = createCanvas({ width: preset.width, height: preset.height });
+const layer = prepareStatic(staticLayer.ctx, {
+  preset,
+  components: sample.layout.components,
+  metrics: entry.metrics,
+});
+
+drawFrame(ctx, { preset, metrics: entry.metrics, static: layer });
+
+// 截图脚本据此确认绘制已经完成。
+document.title = `hud-golden-ready:${presetId}`;
+</script>
+</body>
+</html>

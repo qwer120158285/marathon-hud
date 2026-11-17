@@ -32,5 +32,13 @@
 | 导出 | 位置 | 说明 |
 | --- | --- | --- |
 | `resolvePreset(id)` / `resolveCanvasPreset(canvas)` | `shared/presets.js` | 画布预设解析：画布尺寸、安全边距、格边长、网格规模、可放置格位范围 |
+| `resolveComponentRect(component, preset)` | `shared/layout.js` | 格位 + 锚点 → 像素矩形；绘制模块只用它取几何 |
 | `validateSchema(instance, schema)` | `shared/validate.js` | JSON Schema 子集校验，错误文本点名具体字段 |
-| `drawFrame(ctx, layout, sample, staticLayer)` | `shared/hud.js`（后续 ticket） | 只用 `ctx` 与数据，不接触运行环境 |
+| `resolveTheme(preset)` / `COLORS` | `shared/theme.js` | 颜色、字号（px @ 短边 1080）、圆角、内边距，按预设换算 |
+| `prepareStatic(ctx, { preset, components, metrics })` | `shared/hud.js` | 把静态内容（底板、标签、单位）画到离屏画布，返回 `{ canvas, plan }` |
+| `drawFrame(ctx, { preset, components, metrics, static })` | `shared/hud.js` | 每帧：清屏 → 一次 `drawImage` 合成静态层 → 只画会变的数值 |
+| `collectCriticalRegions(ctx, …)` | `shared/hud.js` | 关键区域（组件矩形外扩 8 px ∪ 文字框），供基准图比对 |
+
+`prepareStatic` 与 `drawFrame` 都只接收 `ctx` 与纯数据：画布由适配层创建、字体由适配层注册，
+共享模块不读文件、不拼路径、不判断运行环境。字体就绪前调用 `drawFrame` 会画出字体回退的帧，
+所以两端适配层都必须先 `await registerFonts()`。

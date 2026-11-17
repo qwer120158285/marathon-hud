@@ -1,0 +1,33 @@
+{
+  "family": "Inter",
+  "version": "4.1",
+  "license": "SIL Open Font License 1.1",
+  "licenseFile": "LICENSE-Inter.txt",
+  "source": "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip",
+  "files": [
+    {
+      "path": "Inter-Regular.ttf",
+      "weight": 400,
+      "style": "normal",
+      "sha256": "40d692fce188e4471e2b3cba937be967878f631ad3ebbbdcd587687c7ebe0c82"
+    },
+    {
+      "path": "Inter-Medium.ttf",
+      "weight": 500,
+      "style": "normal",
+      "sha256": "97ad806f526e41546d46365bb3a393145f75b7b1568913db74549ad8b8dba872"
+    },
+    {
+      "path": "Inter-SemiBold.ttf",
+      "weight": 600,
+      "style": "normal",
+      "sha256": "78a843fade9d4612a5567302fb595b56976eb5fcebf4fea5a5912d638bafcde3"
+    },
+    {
+      "path": "Inter-Bold.ttf",
+      "weight": 700,
+      "style": "normal",
+      "sha256": "288316099b1e0a47a4716d159098005eef7c0066921f34e3200393dbdb01947f"
+    }
+  ]
+}
