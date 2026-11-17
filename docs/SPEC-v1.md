@@ -26,12 +26,14 @@ FFmpeg（源视频 + HUD RGBA → overlay → H.264 MP4）
 
 ```
 marathon-hud/
-├── project.json                  # 唯一配置入口（ADR 0005）
-├── README.md
+├── project.json                  # 唯一配置入口（ADR 0005）；抖音竖屏实例
+├── project.landscape.json        # B 站横屏实例（源视频画幅不同，工具不做 scale/crop）
+├── README.md                     # 使用方式 + 「明确不做」清单
 ├── GLOSSARY.md
 ├── docs/
 │   ├── DECISIONS.md              # 决策总览 + ADR 索引
 │   ├── SPEC-v1.md                # 本文件
+│   ├── ACCEPTANCE-v1.md          # 首版 8 条验收的逐条命令与实测结果
 │   ├── adr/0001…0006
 │   ├── schema/project.schema.json
 │   └── agents/                   # 既有协作说明，保留
@@ -55,12 +57,14 @@ marathon-hud/
 ├── data/
 │   ├── tcx.mjs                   # TCX → 规范化采样点
 │   └── interpolate.mjs           # 去重、线性插值、10 s 平滑、GPS 断笔
-├── assets/                       # 源视频等素材（project.json 相对引用）
+├── assets/                       # 源视频等素材（project.json 相对引用；*.mp4 不入库）
 ├── tests/
-│   ├── fixtures/sample.json      # 固定示意数据
+│   ├── fixtures/sample.json      # 固定示意数据（四类组件齐全）
 │   ├── golden/<preset>.png       # 两个预设各一张基准图
-│   └── golden-compare.mjs        # 全图 + 关键区域差异比对
-└── marathon-hud-demo/            # 既有验证实现，逻辑迁移后归档保留
+│   ├── golden-compare.mjs        # 全图 + 关键区域 + 文字区差异比对
+│   ├── accept-golden.mjs         # 两预设 × 两端基准图全量比对（npm run accept:golden）
+│   └── acceptance-video.mjs      # 两段成片规格与 HUD 位置验收（npm run accept:video）
+└── archive/marathon-hud-demo/    # 既有验证实现，逻辑迁移后归档保留（见 archive/README.md）
 ```
 
 与既有 demo 的迁移对应：`src/render.js`（ffmpeg 参数与背压）→ `cli/ffmpeg.mjs`；`src/csv.js`（二分 + 插值）→ `data/interpolate.mjs`，输入换成 TCX 规范化采样点；`src/hud.js`（绘制）→ `shared/hud.js`，去掉硬编码坐标、改由格位布局驱动；`activity.csv` 假数据停用。
@@ -120,6 +124,16 @@ Q11 的 `layout.components[]` 与 Q14 的 `HudConfig.components` 布尔开关不
 
 尖括号字段为实施时填入；`sourceVideo.probed` 与 `output.fps` 为示意值（`fps` 拟定默认 30，按源视频覆盖）。天气数值来自实测快照，媒体信息以 ffprobe 实际结果为准。所有路径相对 `project.json` 所在目录。
 
+实施口径补充（2026-11-17 落地时确定，不改变任何已冻结原则）：
+
+- 仓库里有两个可直接使用的实例：`project.json`（抖音竖屏，源视频 `assets/run-portrait.mp4`）与
+  `project.landscape.json`（B 站横屏，源视频 `assets/run-landscape.mp4`）。两者引用同一条 TCX 与同一份
+  天气快照；之所以是两个文件，是因为工具不做 scale / crop（ADR 0003），源视频画幅必须与画布一致。
+- `sourceVideo.probed` 只是**探测记录**，不参与规格校验；出片依据是 ffprobe 实测时长。
+  记录值与实测时长相差超过 1 s 时，导出前校验给一条**不阻断**的提示，并给出重跑探测的命令。
+- HUD 上的天气短语用英文（`CLEAR` / `DRIZZLE` / `RAIN` / `THUNDER` …），未知 WMO 码显示 `WX <code>`。
+  理由：Inter 没有汉字字形，中文会落到本机系统字体，换机器时字宽变化、基准图不可复现（ADR 0001「字体」）。
+
 ## 4. CLI 接口（拟定）
 
 ```
@@ -132,7 +146,7 @@ node cli/render.mjs --project <path/to/project.json> [options]
 | `--preset <id>` | 本次出片预设，必须在 `targetPresets[]` 内；存在多个目标预设且不指定时报错 |
 | `--at-frame <n>` | 打印第 n 帧（0 起）对应的运动时刻与该帧运动指标，用于核对数据源；不需要 `--preset` |
 | `--validate-only` | 只做联合预设校验并打印报告（含数据源解析统计），不加载媒体、不启动 FFmpeg |
-| `--dry-run` | 执行到导出前全量校验为止（含 ffprobe 尺寸比对），不启动 FFmpeg |
+| `--dry-run` | 执行到导出前全量校验为止（含 ffprobe 尺寸比对），再真实跑完整帧循环、统计写入字节数；不启动 FFmpeg |
 | `--out <path>` | 覆盖 `output.path` |
 
 退出码：`0` 成功；`2` 配置或校验失败；`3` FFmpeg 失败；`4` 数据源缺失（`tcx.path` 未配置、文件不存在或不可解析）。
@@ -143,8 +157,11 @@ node cli/render.mjs --project <path/to/project.json> [options]
 2. **联合校验**：对 `targetPresets[]` 全部预设，用同一份候选布局与同一版本预设配置，检查格位有效、尺寸有效、锚点映射有效、组件完整矩形未越过安全区；重叠只作提示。
 3. 资源检查：字体文件存在、SHA-256 匹配、两端注册完成。
 4. `ffprobe` 读取 width / height / SAR / DAR / 旋转元数据，与目标画布比对，不一致拒绝并报告实际值 / 期望值。
-5. 确认 HUD 帧尺寸等于目标画布。
-6. 启动 FFmpeg，进入帧循环。
+   SAR / DAR 为「未标注」（ffprobe 的 `0:1`）时按 1:1 / 画面宽高处理，报告里写明这一点。
+5. `sourceVideo.probed.durationSec` 与实测时长相差 >1 s 时给一条不阻断的提示（记录值过期），
+   并给出重跑探测的命令；出片始终以实测时长为准。
+6. 确认 HUD 帧尺寸等于目标画布。
+7. 启动 FFmpeg，进入帧循环。
 
 ## 5. 帧循环、时间轴与背压
 
@@ -171,11 +188,15 @@ node tests/golden-compare.mjs --preset douyin-portrait
 node tests/golden-compare.mjs --preset bilibili-landscape
 ```
 
+一次跑完「两个预设 × 两端」的汇总命令是 `npm run accept:golden`（Node 侧渲染 + Chrome headless 截图，
+都与同一张基准图比对；无 Chrome 时用 `--node-only` 只跑 Node 侧）。
+
 固定 `tests/fixtures/sample.json`、同一份布局、同一套字体、DPR = 1、固定 Canvas 尺寸与颜色空间、透明背景；浏览器与 Node 各输出 PNG，与 `tests/golden/<preset>.png` 比较全图与关键区域两个差异比例。阈值与计算口径见 ADR 0001（含 2026-11-17 的修订 1：非文字区域沿用 8/255 与 ≤1% / ≤0.2%，文字区域改判为几何三项 + 剖面内容 + 墨量带 + 12× 归一化降采样兜底）；升级 `@napi-rs/canvas` / Skia / 字体版本后须重审基准图并重跑标定。
 
 ## 7. 首版验收清单
 
-对应 ADR 0006 的 8 条，实施时逐条打勾；任一条未通过不算首版完成。
+对应 ADR 0006 的 8 条，实施时逐条打勾；任一条未通过不算首版完成。逐条的命令与实测结果见
+`docs/ACCEPTANCE-v1.md`（2026-11-17 全部通过）。
 
 | # | 验收项 | 检查方式 |
 | --- | --- | --- |
