@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { runFrameLoop, createCountingSink, FrameSizeError } from '../cli/frame-loop.mjs';
+import { runFrameLoop, createCountingSink, readFrameRgba, FrameSizeError } from '../cli/frame-loop.mjs';
 import { createCanvas, registerFonts } from '../cli/adapter.mjs';
 import { buildMotion } from '../data/interpolate.mjs';
 import { prepareStatic } from '../shared/hud.js';
@@ -58,6 +58,22 @@ function emptyStaticLayer(preset) {
 function bytesPerFrame(preset) {
   return preset.width * preset.height * 4;
 }
+
+// 验收项：RGBA 管道交出的是直通 alpha。半透明白必须保持 255 的 R/G/B，透明度只体现在 alpha 上。
+// 预乘像素会把它压成 (107,107,107,107)，FFmpeg 按直通解释就会把路线这类浅色描边画暗。
+test('帧循环交出直通 RGBA：半透明白的 R/G/B 保持 255，alpha 才表示透明度', () => {
+  const { canvas, ctx } = createCanvas({ width: 4, height: 4 });
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.42)';
+  ctx.fillRect(0, 0, 4, 4);
+
+  const buffer = readFrameRgba(canvas);
+  assert.equal(buffer.length, 4 * 4 * 4);
+  const [r, g, b, a] = [...buffer.slice(0, 4)];
+  assert.equal(r, 255);
+  assert.equal(g, 255);
+  assert.equal(b, 255);
+  assert.ok(Math.abs(a - 107) <= 1, `alpha ${a} 应为 0.42 × 255 ≈ 107`);
+});
 
 test('写入字节数 = W × H × 4 × 帧数，且每次 write 恰好一帧', async () => {
   const lengths = [];

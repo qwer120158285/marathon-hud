@@ -22,6 +22,32 @@ export class FrameSizeError extends Error {
 }
 
 /**
+ * 取出一帧的直通（非预乘）RGBA 字节。
+ *
+ * `canvas.data()` 返回的是 Skia 的**预乘**像素：rgba(255,255,255,0.42) 会变成 (107,107,107,107)。
+ * FFmpeg 的 `rawvideo` 按直通 alpha 解释，直接喂预乘数据会把半透明色画暗——深色底板看不出来，
+ * 路线这类浅色半透明描边会明显发灰。
+ *
+ * 就地反预乘而不是 `getImageData`：后者每帧新分配 W×H×4 字节，60 帧就会让 RSS 涨到整段帧体积；
+ * 这里复用同一块画布内存，帧数与内存占用无关（SPEC-v1 第 5 节：进程内只持有 1–2 帧）。
+ * 帧循环每帧都先 `clearRect` 再重画，就地改写不会污染下一帧。
+ *
+ * @param {{ data(): Uint8ClampedArray }} canvas 每帧复用的画布
+ * @returns {Uint8ClampedArray} 长度 = width × height × 4
+ */
+export function readFrameRgba(canvas) {
+  const data = canvas.data();
+  for (let index = 0; index < data.length; index += 4) {
+    const alpha = data[index + 3];
+    if (alpha === 255 || alpha === 0) continue;
+    data[index] = Math.round((data[index] * 255) / alpha);
+    data[index + 1] = Math.round((data[index + 1] * 255) / alpha);
+    data[index + 2] = Math.round((data[index + 2] * 255) / alpha);
+  }
+  return data;
+}
+
+/**
  * 计数 sink：只统计帧数与字节数，不保留任何缓冲（`--dry-run` 用）。
  * @returns {{ frames: number, bytes: number, write(buffer: Buffer): boolean }}
  */
@@ -84,8 +110,8 @@ export async function runFrameLoop({
     const { metrics } = motionAtFrame(motion, frame, { fps, alignmentOffsetMs });
     drawFrame(ctx, { preset, metrics, static: staticLayer });
 
-    // RGBA，长度 = W×H×4。交出后不再被帧循环持有。
-    const buffer = canvas.data();
+    // 直通 RGBA，长度 = W×H×4。交出后不再被帧循环持有。
+    const buffer = readFrameRgba(canvas);
     const pending = sink.write(buffer);
 
     if (pending !== null && typeof pending === 'object' && typeof pending.then === 'function') {
